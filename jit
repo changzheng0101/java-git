@@ -1,0 +1,17 @@
+#!/bin/bash
+# jit 命令行包装脚本
+# 使用此脚本可以在任意目录运行 jit 命令
+
+# 获取脚本所在目录（即使通过符号链接调用也能正确获取）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JAR_FILE="$SCRIPT_DIR/target/jit.jar"
+
+# 检查 jar 文件是否存在
+if [ ! -f "$JAR_FILE" ]; then
+    echo "错误: 找不到 jit.jar 文件" >&2
+    echo "请先运行: mvn package" >&2
+    exit 1
+fi
+
+# 执行 jit 命令
+java -jar "$JAR_FILE" "$@"
