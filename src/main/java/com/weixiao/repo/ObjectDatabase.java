@@ -49,7 +49,13 @@ public final class ObjectDatabase {
 
         String oid = HexUtils.bytesToHex(sha1(content));
         Path objectPath = objectPath(oid);
+
         log.debug("store type={} oid={} path={}", object.getType(), oid, objectPath);
+        // 如果对象已存在，直接返回 oid，避免重复保存
+        if (Files.exists(objectPath)) {
+            log.debug("store type={} oid={} already exists, skipping", object.getType(), oid);
+            return oid;
+        }
         Path dir = objectPath.getParent();
         if (!Files.exists(dir)) {
             Files.createDirectories(dir);
