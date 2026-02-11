@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -48,22 +49,8 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
         log.debug("repo root={}", repo.getRoot());
 
         try {
-            List<String> files = repo.getWorkspace().listFiles();
-            log.debug("listFiles count={} files={}", files.size(), files);
-            List<TreeEntry> entries = new ArrayList<>();
-            for (String name : files) {
-                byte[] data = repo.getWorkspace().readFile(name);
-                Blob blob = new Blob(data);
-                String blobOid = repo.getDatabase().store(blob);
-                String mode = repo.getWorkspace().getFileMode(name);
-                log.debug("stored blob {} -> {} mode={}", name, blobOid, mode);
-                TreeEntry entry = new TreeEntry(mode, name, blobOid);
-                entries.add(entry);
-            }
-
-            Tree tree = new Tree(entries);
-            String treeOid = repo.getDatabase().store(tree);
-            log.debug("stored tree oid={}", treeOid);
+            String treeOid = buildTree(repo, repo.getWorkspace().getRoot());
+            log.debug("stored root tree oid={}", treeOid);
 
             String parentOid = repo.getRefs().readHead();
             log.debug("parent oid={}", parentOid);
@@ -82,6 +69,40 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
+    }
+
+    /**
+     * 递归构建 Tree：对于文件创建 Blob，对于目录递归构建子 Tree。
+     * 返回根目录的 tree oid。
+     */
+    private String buildTree(Repository repo, Path dirPath) throws IOException {
+        List<TreeEntry> entries = new ArrayList<>();
+        List<Path> children = repo.getWorkspace().listEntries(dirPath);
+
+        for (Path child : children) {
+            String name = child.getFileName().toString();
+            if (Files.isDirectory(child)) {
+                // 递归构建子目录的 Tree
+                String childTreeOid = buildTree(repo, child);
+                String mode = "40000"; // 目录模式
+                log.debug("built tree {} -> {} mode={}", name, childTreeOid, mode);
+                entries.add(new TreeEntry(mode, name, childTreeOid));
+            } else if (Files.isRegularFile(child)) {
+                // 创建文件的 Blob
+                byte[] data = repo.getWorkspace().readFile(child);
+                Blob blob = new Blob(data);
+                String blobOid = repo.getDatabase().store(blob);
+                String mode = repo.getWorkspace().getFileMode(child);
+                log.debug("stored blob {} -> {} mode={}", name, blobOid, mode);
+                entries.add(new TreeEntry(mode, name, blobOid));
+            }
+        }
+
+        // 创建当前目录的 Tree
+        Tree tree = new Tree(entries);
+        String treeOid = repo.getDatabase().store(tree);
+        log.debug("stored tree at {} -> {}", dirPath, treeOid);
+        return treeOid;
     }
 
     /** 生成当前作者字符串，格式：Name &lt;name@local&gt; timestamp +0000。 */
