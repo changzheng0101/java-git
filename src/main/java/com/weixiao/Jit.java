@@ -14,6 +14,9 @@ import picocli.CommandLine.*;
 @Command(name = "jit", mixinStandardHelpOptions = true, description = "jit - 版本控制")
 public class Jit implements Runnable {
 
+    /**
+     * 未指定子命令时打印用法说明。
+     */
     @Override
     public void run() {
         new CommandLine(this).usage(System.out);

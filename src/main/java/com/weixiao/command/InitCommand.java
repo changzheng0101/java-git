@@ -3,6 +3,7 @@ package com.weixiao.command;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,6 +28,7 @@ public class InitCommand implements Runnable, IExitCodeGenerator {
 
     private int exitCode = 0;
 
+    /** 在指定或当前目录创建 .git、.git/objects、.git/refs/heads 并写入 HEAD 指向 refs/heads/master，成功时输出一行提示。 */
     @Override
     public void run() {
         Path root = path != null ? path.toAbsolutePath().normalize() : Paths.get("").toAbsolutePath().normalize();
@@ -44,7 +46,7 @@ public class InitCommand implements Runnable, IExitCodeGenerator {
             }
             // 设置当前分支为 master（与 git init 一致）
             Path headFile = gitPath.resolve("HEAD");
-            Files.writeString(headFile, HEAD_REF);
+            Files.write(headFile, HEAD_REF.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
@@ -52,9 +54,9 @@ public class InitCommand implements Runnable, IExitCodeGenerator {
         }
 
         System.out.println("Initialized empty Jit repository in " + gitPath);
-        System.out.println("Current branch: " + DEFAULT_BRANCH);
     }
 
+    /** 返回本命令的退出码（0 成功，1 失败）。 */
     @Override
     public int getExitCode() {
         return exitCode;
