@@ -1,5 +1,8 @@
 package com.weixiao.repo;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,6 +14,8 @@ import java.util.regex.Pattern;
  * 引用：读取 HEAD、更新 refs/heads/master。
  */
 public final class Refs {
+
+    private static final Logger log = LoggerFactory.getLogger(Refs.class);
 
     private static final String HEAD = "HEAD";
     private static final String REFS_HEADS_MASTER = "refs/heads/master";
@@ -30,14 +35,19 @@ public final class Refs {
      */
     public String readHead() throws IOException {
         Path headFile = gitDir.resolve(HEAD);
-        if (!Files.exists(headFile)) return null;
+        if (!Files.exists(headFile)) {
+            log.debug("readHead: no HEAD file");
+            return null;
+        }
         String content = Files.readString(headFile, StandardCharsets.UTF_8).trim();
         Matcher m = HEAD_REF.matcher(content);
         if (!m.matches()) return null;
         String ref = m.group(1).trim();
         Path refPath = gitDir.resolve(ref);
         if (!Files.exists(refPath)) return null;
-        return Files.readString(refPath, StandardCharsets.UTF_8).trim();
+        String oid = Files.readString(refPath, StandardCharsets.UTF_8).trim();
+        log.debug("readHead ref={} oid={}", ref, oid);
+        return oid;
     }
 
     /**
@@ -50,5 +60,6 @@ public final class Refs {
             Files.createDirectories(dir);
         }
         Files.writeString(refPath, oid + "\n", StandardCharsets.UTF_8);
+        log.debug("updateMaster oid={}", oid);
     }
 }

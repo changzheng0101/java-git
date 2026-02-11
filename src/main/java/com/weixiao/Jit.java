@@ -36,10 +36,15 @@ public class Jit implements Runnable {
 
     /**
      * 主入口方法，执行 jit 命令。
+     * 若需调试日志：-Djit.debug=true 或环境变量 JIT_DEBUG=true，或 -Djit.log.level=DEBUG。
      *
      * @param args 命令行参数
      */
     public static void main(String[] args) {
+        if ("true".equalsIgnoreCase(System.getProperty("jit.debug"))
+                || "true".equalsIgnoreCase(System.getenv("JIT_DEBUG"))) {
+            System.setProperty("jit.log.level", "DEBUG");
+        }
         CommandLine cli = createCommandLine();
         String[] runArgs = args != null && args.length > 0 ? args : new String[]{"--help"};
         int exitCode = cli.execute(runArgs);

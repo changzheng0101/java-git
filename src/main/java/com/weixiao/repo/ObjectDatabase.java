@@ -2,6 +2,8 @@ package com.weixiao.repo;
 
 import com.weixiao.obj.GitObject;
 import com.weixiao.utils.HexUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -20,6 +22,8 @@ import java.util.zip.InflaterInputStream;
  * .git/objects 存储：按 oid 写入/读取对象，格式与 Git 一致（type size\0body，zlib 压缩）。
  */
 public final class ObjectDatabase {
+
+    private static final Logger log = LoggerFactory.getLogger(ObjectDatabase.class);
 
     private static final String OBJECTS_DIR = "objects";
     private final Path gitDir;
@@ -45,6 +49,7 @@ public final class ObjectDatabase {
 
         String oid = HexUtils.bytesToHex(sha1(content));
         Path objectPath = objectPath(oid);
+        log.debug("store type={} oid={} path={}", object.getType(), oid, objectPath);
         Path dir = objectPath.getParent();
         if (!Files.exists(dir)) {
             Files.createDirectories(dir);
@@ -65,6 +70,7 @@ public final class ObjectDatabase {
      */
     public RawObject load(String oid) throws IOException {
         Path p = objectPath(oid);
+        log.debug("load oid={} path={}", oid, p);
         if (!Files.exists(p)) {
             throw new IOException("object not found: " + oid);
         }

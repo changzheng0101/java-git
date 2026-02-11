@@ -1,5 +1,8 @@
 package com.weixiao.repo;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -7,6 +10,8 @@ import java.nio.file.Paths;
  * 仓库：定位 .git 目录，提供 ObjectDatabase、Refs、Workspace。
  */
 public final class Repository {
+
+    private static final Logger log = LoggerFactory.getLogger(Repository.class);
 
     private static final String GIT_DIR = ".git";
 
@@ -31,13 +36,16 @@ public final class Repository {
     public static Repository find(Path start) {
         Path current = start.toAbsolutePath().normalize();
         Path root = Paths.get("/").normalize();
+        log.debug("find repo start={}", current);
         while (current != null && !current.equals(root)) {
             if (java.nio.file.Files.exists(current.resolve(GIT_DIR))
                     && java.nio.file.Files.isDirectory(current.resolve(GIT_DIR))) {
+                log.info("found repo at {}", current);
                 return new Repository(current);
             }
             current = current.getParent();
         }
+        log.debug("no repo found");
         return null;
     }
 

@@ -83,3 +83,13 @@ jit commit --help
 **Q: 如何卸载？**
 
 从 `~/.zshrc` 或 `~/.bashrc` 中删除添加的 `export PATH="..."` 那一行，然后 `source` 对应文件，或关闭并重新打开终端。
+
+**Q: 调试时如何打开日志？**
+
+默认不输出任何日志。需要调试时可通过以下任一方式开启日志（输出到 stderr）：
+
+- 环境变量：`JIT_DEBUG=true jit init`（相当于 DEBUG 级别）
+- JVM 参数：`java -Djit.debug=true -jar target/jit.jar init`
+- 或直接设置日志级别：`java -Djit.log.level=级别 -jar target/jit.jar init`
+
+可选级别：**INFO**（关键节点）或 **DEBUG**（路径、oid、文件列表等）。异常会以 ERROR 记录。

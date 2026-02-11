@@ -1,5 +1,8 @@
 package com.weixiao.repo;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,6 +14,8 @@ import java.util.stream.Stream;
  * 工作区：列出并读取工作目录中的文件（排除 .、..、.git）。
  */
 public final class Workspace {
+
+    private static final Logger log = LoggerFactory.getLogger(Workspace.class);
 
     private static final String GIT_DIR = ".git";
     private final Path root;
@@ -34,6 +39,7 @@ public final class Workspace {
                 names.add(name);
             }
         }
+        log.debug("listFiles root={} count={} names={}", root, names.size(), names);
         return names;
     }
 
