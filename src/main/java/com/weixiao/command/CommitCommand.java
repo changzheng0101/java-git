@@ -7,7 +7,6 @@ import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import picocli.CommandLine;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
@@ -56,8 +55,10 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
                 byte[] data = repo.getWorkspace().readFile(name);
                 Blob blob = new Blob(data);
                 String blobOid = repo.getDatabase().store(blob);
-                log.debug("stored blob {} -> {}", name, blobOid);
-                entries.add(TreeEntry.regularFile(name, blobOid));
+                String mode = repo.getWorkspace().getFileMode(name);
+                log.debug("stored blob {} -> {} mode={}", name, blobOid, mode);
+                TreeEntry entry = new TreeEntry(mode, name, blobOid);
+                entries.add(entry);
             }
 
             Tree tree = new Tree(entries);

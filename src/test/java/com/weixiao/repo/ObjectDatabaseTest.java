@@ -38,7 +38,7 @@ class ObjectDatabaseTest {
 
     /**
      * 存储 Tree 后按 oid load，应得到类型 "tree"。
-     * 示例：先 store 一个 Blob，再 store 一个只含一条 regularFile("a.txt", blobOid) 的 Tree，load(treeOid).getType() 为 "tree"。
+     * 示例：先 store 一个 Blob，再 store 一个只含一条 TreeEntry("100644", "a.txt", blobOid) 的 Tree，load(treeOid).getType() 为 "tree"。
      */
     @Test
     @DisplayName("store Tree 后 load 得到 tree 类型")
@@ -49,7 +49,7 @@ class ObjectDatabaseTest {
         ObjectDatabase db = new ObjectDatabase(gitDir);
         Blob b = new Blob("x".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String blobOid = db.store(b);
-        Tree tree = new Tree(List.of(TreeEntry.regularFile("a.txt", blobOid)));
+        Tree tree = new Tree(List.of(new TreeEntry("100644", "a.txt", blobOid)));
         String treeOid = db.store(tree);
         assertThat(treeOid).hasSize(40);
         ObjectDatabase.RawObject raw = db.load(treeOid);
@@ -69,7 +69,7 @@ class ObjectDatabaseTest {
         ObjectDatabase db = new ObjectDatabase(gitDir);
         Blob b = new Blob("x".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String blobOid = db.store(b);
-        Tree tree = new Tree(List.of(TreeEntry.regularFile("f", blobOid)));
+        Tree tree = new Tree(List.of(new TreeEntry("100644", "f", blobOid)));
         String treeOid = db.store(tree);
         Commit commit = Commit.first(treeOid, "u <u@local> 0 +0000", "first");
         String commitOid = db.store(commit);

@@ -6,8 +6,10 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -46,6 +48,56 @@ public final class Workspace {
     /** 读取工作区根目录下名为 name 的文件的全部字节。 */
     public byte[] readFile(String name) throws IOException {
         return Files.readAllBytes(root.resolve(name));
+    }
+
+    /**
+     * 检查工作区根目录下名为 name 的文件是否可执行。
+     * 在 Unix/Linux/macOS 上检查文件权限位，在 Windows 上检查文件扩展名。
+     */
+    public boolean isExecutable(String name) {
+        return Files.isExecutable(root.resolve(name));
+    }
+
+    /**
+     * 获取文件的 Git mode 字符串（如 "100644" 或 "100755"）。
+     * mode 格式：第一位为文件类型（1=regular file），后三位从文件权限读取。
+     * 在 Windows 上，如果无法获取 POSIX 权限，则根据是否可执行返回默认值。
+     */
+    public String getFileMode(String name) throws IOException {
+        Path filePath = root.resolve(name);
+        try {
+            Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(filePath);
+            int ownerPerm = permissionToOctal(permissions, PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE);
+            int groupPerm = permissionToOctal(permissions, PosixFilePermission.GROUP_READ,
+                    PosixFilePermission.GROUP_WRITE, PosixFilePermission.GROUP_EXECUTE);
+            int othersPerm = permissionToOctal(permissions, PosixFilePermission.OTHERS_READ,
+                    PosixFilePermission.OTHERS_WRITE, PosixFilePermission.OTHERS_EXECUTE);
+            String mode = String.format("100%d%d%d", ownerPerm, groupPerm, othersPerm);
+            log.debug("getFileMode {} -> {}", name, mode);
+            return mode;
+        } catch (UnsupportedOperationException e) {
+            // Windows 或其他不支持 POSIX 权限的系统
+            boolean executable = Files.isExecutable(filePath);
+            String mode = executable ? "100755" : "100644";
+            log.debug("getFileMode {} -> {} (fallback, executable={})", name, mode, executable);
+            return mode;
+        }
+    }
+
+    /**
+     * 将 POSIX 权限转换为八进制数字（0-7）。
+     * 参数为 owner/group/others 的 read/write/execute 权限。
+     */
+    private static int permissionToOctal(Set<PosixFilePermission> permissions,
+                                         PosixFilePermission read,
+                                         PosixFilePermission write,
+                                         PosixFilePermission execute) {
+        int value = 0;
+        if (permissions.contains(read)) value |= 4;
+        if (permissions.contains(write)) value |= 2;
+        if (permissions.contains(execute)) value |= 1;
+        return value;
     }
 
     /** 工作区根目录路径。 */
