@@ -8,3 +8,8 @@ git cat-file -p HEAD^{tree}
 
 查看暂存区中的内容
 git ls-files --stage
+
+查看文件状态  
+git status --porcelain  
+?? xxx  
+其中??代表这个文件为untracked file

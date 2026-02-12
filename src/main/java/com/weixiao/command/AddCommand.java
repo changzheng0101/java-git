@@ -23,11 +23,15 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(AddCommand.class);
 
-    /** 要添加的路径（文件或目录），可多个。 */
+    /**
+     * 要添加的路径（文件或目录），可多个。
+     */
     @Parameters(index = "0", arity = "1..*", paramLabel = "PATH", description = "要添加的文件或目录路径（可多个）")
     private List<Path> paths;
 
-    /** 仓库根路径，默认为当前目录。 */
+    /**
+     * 仓库根路径，默认为当前目录。
+     */
     @Option(names = {"-C", "--path"}, paramLabel = "DIR", description = "仓库根路径，默认为当前目录")
     private Path path;
 
@@ -92,7 +96,9 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
         }
     }
 
-    /** 添加单个文件到暂存区，使用文件真实 stat（ctime/mtime/dev/ino/uid/gid）。 */
+    /**
+     * 添加单个文件到暂存区，使用文件真实 stat（ctime/mtime/dev/ino/uid/gid）。
+     */
     private void addFile(Repository repo, Path root, Path filePath) throws IOException {
         String relative = root.relativize(filePath).toString().replace('\\', '/');
         byte[] data = repo.getWorkspace().readFile(filePath);
@@ -104,7 +110,9 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
         log.debug("added file {} -> {} mode={} size={} stat={}", relative, blobOid, mode, data.length, stat);
     }
 
-    /** 递归添加目录下所有普通文件。 */
+    /**
+     * 递归添加目录下所有普通文件。
+     */
     private void addDirectory(Repository repo, Path root, Path dirPath) throws IOException {
         List<Path> children = repo.getWorkspace().listEntries(dirPath);
         for (Path child : children) {
