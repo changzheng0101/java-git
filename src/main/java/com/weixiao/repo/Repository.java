@@ -21,6 +21,7 @@ public final class Repository {
     private final ObjectDatabase database;
     private final Refs refs;
     private final Workspace workspace;
+    private final Index index;
 
     /**
      * 以给定路径为仓库根（工作区根），.git 为 root/.git，并创建 ObjectDatabase、Refs、Workspace。
@@ -31,6 +32,7 @@ public final class Repository {
         this.database = new ObjectDatabase(gitDir);
         this.refs = new Refs(gitDir);
         this.workspace = new Workspace(this.root);
+        this.index = new Index(gitDir);
     }
 
     /**
@@ -85,5 +87,12 @@ public final class Repository {
      */
     public Workspace getWorkspace() {
         return workspace;
+    }
+
+    /**
+     * 暂存区，用于 add/commit。
+     */
+    public Index getIndex() {
+        return index;
     }
 }

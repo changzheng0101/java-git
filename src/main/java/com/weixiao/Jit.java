@@ -1,5 +1,6 @@
 package com.weixiao;
 
+import com.weixiao.command.AddCommand;
 import com.weixiao.command.CommitCommand;
 import com.weixiao.command.InitCommand;
 import picocli.CommandLine;
@@ -31,6 +32,7 @@ public class Jit implements Runnable {
     public static CommandLine createCommandLine() {
         return new CommandLine(new Jit())
                 .addSubcommand("init", new InitCommand())
+                .addSubcommand("add", new AddCommand())
                 .addSubcommand("commit", new CommitCommand());
     }
 

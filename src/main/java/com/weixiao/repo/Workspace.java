@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.List;
@@ -125,6 +127,37 @@ public final class Workspace {
             log.debug("getFileMode {} -> {} (fallback, executable={})", filePath, mode, executable);
             return mode;
         }
+    }
+
+    /**
+     * 获取文件的 stat 属性，用于写入 index（ctime、mtime、dev、ino、uid、gid）。
+     * 在 Unix 上尽量使用真实值；不支持时（如 Windows）对应字段为 0。
+     */
+    public static Index.IndexStat getFileStat(Path filePath) throws IOException {
+        BasicFileAttributes attrs = Files.readAttributes(filePath, BasicFileAttributes.class);
+        FileTime creationTime = attrs.creationTime();
+        FileTime lastModifiedTime = attrs.lastModifiedTime();
+        long ctimeSec = creationTime.toInstant().getEpochSecond();
+        int ctimeNsec = creationTime.toInstant().getNano();
+        long mtimeSec = lastModifiedTime.toInstant().getEpochSecond();
+        int mtimeNsec = lastModifiedTime.toInstant().getNano();
+        int dev = 0, ino = 0, uid = 0, gid = 0;
+        try {
+            Object devObj = Files.getAttribute(filePath, "unix:dev");
+            Object inoObj = Files.getAttribute(filePath, "unix:ino");
+            Object uidObj = Files.getAttribute(filePath, "unix:uid");
+            Object gidObj = Files.getAttribute(filePath, "unix:gid");
+            if (devObj instanceof Number) dev = ((Number) devObj).intValue();
+            if (inoObj instanceof Number) ino = ((Number) inoObj).intValue();
+            if (uidObj instanceof Number) uid = ((Number) uidObj).intValue();
+            if (gidObj instanceof Number) gid = ((Number) gidObj).intValue();
+        } catch (UnsupportedOperationException | IllegalArgumentException e) {
+            log.debug("unix stat not available for {}: {}", filePath, e.getMessage());
+        }
+        return new Index.IndexStat(
+                (int) (ctimeSec & 0xFFFFFFFFL), ctimeNsec,
+                (int) (mtimeSec & 0xFFFFFFFFL), mtimeNsec,
+                dev, ino, uid, gid);
     }
 
     /**

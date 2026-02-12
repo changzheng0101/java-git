@@ -5,3 +5,6 @@ git cat-file -p hash256
 
 查看当前HEAD对应的tree
 git cat-file -p HEAD^{tree}
+
+查看暂存区中的内容
+git ls-files --stage
