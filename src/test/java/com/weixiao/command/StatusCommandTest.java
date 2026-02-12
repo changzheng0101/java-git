@@ -233,4 +233,63 @@ class StatusCommandTest {
         // 如果时间戳相同（文件未被修改），应该显示 clean
         assertThat(result.getOutput()).contains("nothing to commit, working tree clean");
     }
+
+    @Test
+    @DisplayName("已删除的文件显示为 deleted（在 index 中但工作区不存在）")
+    void status_deletedFile_detected(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        Path file = tempDir.resolve("deleted.txt");
+        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "deleted.txt");
+        Files.delete(file);
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Changes not staged for commit:");
+        assertThat(result.getOutput()).contains("deleted:    deleted.txt");
+    }
+
+    @Test
+    @DisplayName("--porcelain 模式：Deleted 文件输出为  D <path>")
+    void status_porcelain_deletedFile(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        Path file = tempDir.resolve("file.txt");
+        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "file.txt");
+        Files.delete(file);
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", "--porcelain", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains(" D file.txt");
+    }
+
+    @Test
+    @DisplayName("Modified、Deleted 和 Untracked 同时存在时都显示")
+    void status_allStatusTypes_shown(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        
+        // Modified
+        Path modifiedFile = tempDir.resolve("modified.txt");
+        Files.write(modifiedFile, "original".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "modified.txt");
+        Files.write(modifiedFile, "changed".getBytes(StandardCharsets.UTF_8));
+        
+        // Deleted
+        Path deletedFile = tempDir.resolve("deleted.txt");
+        Files.write(deletedFile, "content".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "deleted.txt");
+        Files.delete(deletedFile);
+        
+        // Untracked
+        Path untrackedFile = tempDir.resolve("untracked.txt");
+        Files.write(untrackedFile, "new".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Changes not staged for commit:");
+        assertThat(result.getOutput()).contains("modified:   modified.txt");
+        assertThat(result.getOutput()).contains("deleted:    deleted.txt");
+        assertThat(result.getOutput()).contains("Untracked files:");
+        assertThat(result.getOutput()).contains("untracked.txt");
+    }
 }
