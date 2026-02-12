@@ -152,4 +152,53 @@ class StatusCommandTest {
         assertThat(result.getOutput()).doesNotContain("empty_dir");
         assertThat(result.getOutput()).doesNotContain("a/");
     }
+
+    @Test
+    @DisplayName("工作区文件与 index 内容不一致时识别为 Modified")
+    void status_modifiedFile_detected(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        Path file = tempDir.resolve("test.txt");
+        Files.write(file, "original".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "test.txt");
+        Files.write(file, "modified".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Changes not staged for commit:");
+        assertThat(result.getOutput()).contains("modified:   test.txt");
+    }
+
+    @Test
+    @DisplayName("--porcelain 模式：Modified 文件输出为  M <path>")
+    void status_porcelain_modifiedFile(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        Path file = tempDir.resolve("file.txt");
+        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "file.txt");
+        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", "--porcelain", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains(" M file.txt");
+    }
+
+    @Test
+    @DisplayName("Modified 和 Untracked 同时存在时都显示")
+    void status_modifiedAndUntracked_bothShown(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        Path modifiedFile = tempDir.resolve("modified.txt");
+        Files.write(modifiedFile, "original".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "modified.txt");
+        Files.write(modifiedFile, "changed".getBytes(StandardCharsets.UTF_8));
+
+        Path untrackedFile = tempDir.resolve("untracked.txt");
+        Files.write(untrackedFile, "new".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Changes not staged for commit:");
+        assertThat(result.getOutput()).contains("modified:   modified.txt");
+        assertThat(result.getOutput()).contains("Untracked files:");
+        assertThat(result.getOutput()).contains("untracked.txt");
+    }
 }

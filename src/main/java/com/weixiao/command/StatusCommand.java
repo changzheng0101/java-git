@@ -1,7 +1,9 @@
 package com.weixiao.command;
 
+import com.weixiao.obj.Blob;
 import com.weixiao.repo.Repository;
 import com.weixiao.repo.Workspace;
+import com.weixiao.utils.HexUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
@@ -10,8 +12,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -26,7 +32,7 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
     @Parameters(index = "0", arity = "0..1", description = "仓库根路径，默认为当前目录")
     private Path path;
 
-    @Option(names = {"--"}, description = "以机器可读格式输出（每行一个文件，格式：?? <path>）")
+    @Option(names = {"--porcelain"}, description = "以机器可读格式输出（每行一个文件，格式：?? <path> 或  M <path>）")
     private boolean porcelain;
 
     private int exitCode = 0;
@@ -47,26 +53,37 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
 
         try {
             repo.getIndex().load();
-            Set<String> trackedPaths = repo.getIndex().getEntries().stream()
-                    .map(com.weixiao.repo.Index.Entry::getPath)
-                    .collect(Collectors.toSet());
-
             Path root = repo.getRoot();
-            List<String> untracked = collectUntracked(repo.getWorkspace(), root, root, "", trackedPaths);
+            StatusResult result = collectStatus(repo, root);
+            List<String> modified = result.getModified();
+            List<String> untracked = result.getUntracked();
 
             if (porcelain) {
-                // 机器可读格式：每行一个文件，格式为 ?? <path>
+                // 机器可读格式：Modified 为 " M <path>"，Untracked 为 "?? <path>"
+                for (String p : modified.stream().sorted().collect(Collectors.toList())) {
+                    System.out.println(" M " + p);
+                }
                 for (String p : untracked.stream().sorted().collect(Collectors.toList())) {
                     System.out.println("?? " + p);
                 }
             } else {
                 // 人类可读格式
+                boolean hasChanges = false;
+                if (!modified.isEmpty()) {
+                    System.out.println("Changes not staged for commit:");
+                    for (String p : modified.stream().sorted().collect(Collectors.toList())) {
+                        System.out.println("  modified:   " + p);
+                    }
+                    hasChanges = true;
+                }
                 if (!untracked.isEmpty()) {
                     System.out.println("Untracked files:");
                     for (String p : untracked.stream().sorted().collect(Collectors.toList())) {
                         System.out.println("  " + p);
                     }
-                } else {
+                    hasChanges = true;
+                }
+                if (!hasChanges) {
                     System.out.println("nothing to commit, working tree clean");
                 }
             }
@@ -75,6 +92,93 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
+    }
+
+    /**
+     * 计算工作区文件的 blob oid（不写入对象库），用于与 index 中的 oid 比较。
+     */
+    private String computeBlobOid(byte[] data) {
+        Blob blob = new Blob(data);
+        byte[] body = blob.toBytes();
+        String header = blob.getType() + " " + body.length + "\0";
+        byte[] headerBytes = header.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] content = new byte[headerBytes.length + body.length];
+        System.arraycopy(headerBytes, 0, content, 0, headerBytes.length);
+        System.arraycopy(body, 0, content, headerBytes.length, body.length);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-1").digest(content);
+            return HexUtils.bytesToHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 一次遍历工作区，同时收集 Modified（在 index 中且内容不一致）和 Untracked（不在 index 中）。
+     */
+    private StatusResult collectStatus(Repository repo, Path root) throws IOException {
+        List<com.weixiao.repo.Index.Entry> entries = repo.getIndex().getEntries();
+        Map<String, com.weixiao.repo.Index.Entry> pathToEntry = new LinkedHashMap<>();
+        for (com.weixiao.repo.Index.Entry e : entries) {
+            pathToEntry.put(e.getPath(), e);
+        }
+        Set<String> trackedPaths = pathToEntry.keySet();
+        StatusResult result = new StatusResult();
+        collectStatusRecurse(repo, root, "", trackedPaths, pathToEntry, result);
+        return result;
+    }
+
+    /**
+     * 递归遍历工作区：遇到文件时，若在 index 中则检查是否 modified，否则加入 untracked；
+     * 目录逻辑与原先 collectUntracked 一致。
+     *
+     * @param repo          仓库，用于获取 workspace
+     * @param dir           当前正在遍历的目录的绝对路径
+     * @param prefix        当前目录相对于仓库根的路径，使用 "/" 分隔；根目录时为空串 ""，递归时传入如 "a"、"a/b"
+     * @param trackedPaths   index 中已跟踪文件的路径集合（相对仓库根、"/" 分隔），用于判断文件或目录是否被跟踪
+     * @param pathToEntry   path 到 index Entry 的映射，用于查找文件对应的 entry（获取 oid）
+     * @param result        存储 Modified 和 Untracked 结果
+     */
+    private void collectStatusRecurse(Repository repo, Path dir, String prefix,
+                                      Set<String> trackedPaths,
+                                      Map<String, com.weixiao.repo.Index.Entry> pathToEntry,
+                                      StatusResult result) throws IOException {
+        Workspace workspace = repo.getWorkspace();
+        for (Path child : workspace.listEntries(dir)) {
+            String name = child.getFileName().toString();
+            String relativePath = prefix.isEmpty() ? name : prefix + "/" + name;
+
+            if (Files.isRegularFile(child)) {
+                com.weixiao.repo.Index.Entry entry = pathToEntry.get(relativePath);
+                if (entry != null) {
+                    byte[] workspaceData = workspace.readFile(child);
+                    String workspaceOid = computeBlobOid(workspaceData);
+                    if (!workspaceOid.equals(entry.getOid())) {
+                        result.getModified().add(relativePath);
+                        log.debug("modified: {} index={} workspace={}", relativePath, entry.getOid(), workspaceOid);
+                    }
+                } else {
+                    result.getUntracked().add(relativePath);
+                }
+            } else if (Files.isDirectory(child)) {
+                if (!hasTrackedFilesUnder(relativePath, trackedPaths)) {
+                    if (hasAnyFileUnder(workspace, child)) {
+                        result.getUntracked().add(relativePath + "/");
+                    }
+                } else {
+                    collectStatusRecurse(repo, child, relativePath, trackedPaths, pathToEntry, result);
+                }
+            }
+        }
+    }
+
+    /** 一次遍历得到的 Modified 与 Untracked 结果。 */
+    private static final class StatusResult {
+        private final List<String> modified = new ArrayList<>();
+        private final List<String> untracked = new ArrayList<>();
+
+        List<String> getModified() { return modified; }
+        List<String> getUntracked() { return untracked; }
     }
 
     /**
@@ -100,43 +204,6 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             }
         }
         return false;
-    }
-
-    /**
-     * 递归收集工作区中未在 index 中跟踪的文件/目录路径（相对仓库根，/ 分隔）。
-     * 若某目录下没有任何文件在 index 中，则只列出该目录本身（路径带尾部 /），不展开其内容；
-     * 空目录不列出（Git 只关心内容，不跟踪空目录）。
-     *
-     * @param workspace    工作区，用于列出指定目录下的条目（{@link Workspace#listEntries(Path)}）
-     * @param root         仓库根目录的绝对路径（工作区根），与 prefix 一起界定相对路径的基准
-     * @param dir          当前正在遍历的目录的绝对路径，本次会对该目录调用 listEntries 并处理其子项
-     * @param prefix       当前目录相对于仓库根的路径，使用 "/" 分隔；根目录时为空串 ""，递归时传入如 "a"、"a/b"
-     * @param trackedPaths index 中已跟踪文件的路径集合（相对仓库根、"/" 分隔），用于判断文件或目录是否被跟踪
-     * @return 本次递归收集到的未跟踪项列表，每项为相对仓库根的路径（文件无后缀，目录带 "/" 后缀）
-     */
-    private List<String> collectUntracked(Workspace workspace, Path root, Path dir, String prefix,
-                                          Set<String> trackedPaths) throws IOException {
-        List<String> result = new ArrayList<>();
-        for (Path child : workspace.listEntries(dir)) {
-            String name = child.getFileName().toString();
-            String relativePath = prefix.isEmpty() ? name : prefix + "/" + name;
-
-            if (Files.isRegularFile(child)) {
-                if (!trackedPaths.contains(relativePath)) {
-                    result.add(relativePath);
-                }
-            } else if (Files.isDirectory(child)) {
-                if (!hasTrackedFilesUnder(relativePath, trackedPaths)) {
-                    // 仅当目录内至少有一个文件时才列为未跟踪（空目录不列，Git 只关心内容）
-                    if (hasAnyFileUnder(workspace, child)) {
-                        result.add(relativePath + "/");
-                    }
-                } else {
-                    result.addAll(collectUntracked(workspace, root, child, relativePath, trackedPaths));
-                }
-            }
-        }
-        return result;
     }
 
     @Override
