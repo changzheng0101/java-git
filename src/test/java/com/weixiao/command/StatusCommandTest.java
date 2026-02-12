@@ -201,4 +201,18 @@ class StatusCommandTest {
         assertThat(result.getOutput()).contains("Untracked files:");
         assertThat(result.getOutput()).contains("untracked.txt");
     }
+
+    @Test
+    @DisplayName("文件大小不同时直接识别为 Modified（无需计算 oid）")
+    void status_sizeChanged_detectedAsModified(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        Path file = tempDir.resolve("file.txt");
+        Files.write(file, "short".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "file.txt");
+        Files.write(file, "much longer content".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "status", tempDir.toString());
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("modified:   file.txt");
+    }
 }

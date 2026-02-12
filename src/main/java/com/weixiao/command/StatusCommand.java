@@ -95,6 +95,47 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
     }
 
     /**
+     * 判断工作区文件是否与 index 中的记录不一致（Modified）。
+     * 采用分层检测策略以提高性能：
+     * 1. 先比较文件大小（size），不同则一定 Modified
+     * 2. 再比较文件权限（mode），不同则一定 Modified
+     * 3. 最后比较文件内容（oid），只有 size 和 mode 都相同时才计算 oid
+     *
+     * @param workspace   工作区，用于读取文件内容和获取文件权限
+     * @param filePath    工作区文件的绝对路径
+     * @param entry       index 中对应的 Entry（包含 size、mode、oid）
+     * @param relativePath 文件的相对路径（用于日志）
+     * @return true 表示文件已修改，false 表示文件未修改
+     */
+    private boolean isFileModified(Workspace workspace, Path filePath,
+                                   com.weixiao.repo.Index.Entry entry,
+                                   String relativePath) throws IOException {
+        // 1. 比较文件大小
+        long fileSize = Files.size(filePath);
+        if (fileSize != entry.getSize()) {
+            log.debug("modified: {} size changed: {} -> {}", relativePath, entry.getSize(), fileSize);
+            return true;
+        }
+
+        // 2. 比较文件权限（mode）
+        String workspaceMode = workspace.getFileMode(filePath);
+        if (!workspaceMode.equals(entry.getMode())) {
+            log.debug("modified: {} mode changed: {} -> {}", relativePath, entry.getMode(), workspaceMode);
+            return true;
+        }
+
+        // 3. size 和 mode 都相同，比较文件内容（oid）
+        byte[] workspaceData = workspace.readFile(filePath);
+        String workspaceOid = computeBlobOid(workspaceData);
+        if (!workspaceOid.equals(entry.getOid())) {
+            log.debug("modified: {} content changed: index={} workspace={}", relativePath, entry.getOid(), workspaceOid);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 计算工作区文件的 blob oid（不写入对象库），用于与 index 中的 oid 比较。
      */
     private String computeBlobOid(byte[] data) {
@@ -151,11 +192,8 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             if (Files.isRegularFile(child)) {
                 com.weixiao.repo.Index.Entry entry = pathToEntry.get(relativePath);
                 if (entry != null) {
-                    byte[] workspaceData = workspace.readFile(child);
-                    String workspaceOid = computeBlobOid(workspaceData);
-                    if (!workspaceOid.equals(entry.getOid())) {
+                    if (isFileModified(workspace, child, entry, relativePath)) {
                         result.getModified().add(relativePath);
-                        log.debug("modified: {} index={} workspace={}", relativePath, entry.getOid(), workspaceOid);
                     }
                 } else {
                     result.getUntracked().add(relativePath);
