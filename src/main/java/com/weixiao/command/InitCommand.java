@@ -35,6 +35,7 @@ public class InitCommand implements Runnable, IExitCodeGenerator {
     /** 在指定或当前目录创建 .git、.git/objects、.git/refs/heads 并写入 HEAD 指向 refs/heads/master，成功时输出一行提示。 */
     @Override
     public void run() {
+        exitCode = 0;
         Path root = path != null ? path.toAbsolutePath().normalize() : Paths.get("").toAbsolutePath().normalize();
         Path gitPath = root.resolve(GIT_DIR);
         log.debug("init root={} gitPath={}", root, gitPath);

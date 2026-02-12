@@ -35,6 +35,7 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
 
     @Override
     public void run() {
+        exitCode = 0;
         Path start = path != null ? path.toAbsolutePath().normalize() : Paths.get("").toAbsolutePath().normalize();
         log.debug("add start path={}", start);
 

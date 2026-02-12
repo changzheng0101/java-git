@@ -33,18 +33,32 @@ class CommitCommandTest {
     }
 
     /**
-     * 在已 init 的仓库中创建文件后执行 jit commit -m，应成功并写入对象与 refs/heads/master。
-     * 示例：init → 创建 hello.txt 内容 "hello" → commit -m "first commit" → 退出码 0，HEAD 指向 40 字符 oid，.git/objects 中存在该 commit 对象。
+     * 在已 init 的仓库中，未 add 任何文件时 commit 应失败，提示 no changes added to commit。
      */
     @Test
-    @DisplayName("init 后创建文件再 commit -m 成功并写入对象与 ref")
-    void commit_afterInitAndFile_succeeds(@TempDir Path tempDir) throws Exception {
+    @DisplayName("index 为空时 commit 失败并提示 no changes added")
+    void commit_emptyIndex_fails(@TempDir Path tempDir) throws Exception {
+        JIT.execute("init", tempDir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "msg", tempDir.toString());
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("no changes added to commit");
+    }
+
+    /**
+     * 在已 init 的仓库中 add 文件后再 commit -m，应成功并写入对象与 refs/heads/master。
+     * 与 Git 一致：commit 只提交 index 中的内容。
+     */
+    @Test
+    @DisplayName("init 后 add 文件再 commit -m 成功并写入对象与 ref")
+    void commit_afterAdd_succeeds(@TempDir Path tempDir) throws Exception {
         JIT.execute("init", tempDir.toString());
         Path f = tempDir.resolve("hello.txt");
         Files.write(f, "hello".getBytes(StandardCharsets.UTF_8));
+        ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "hello.txt");
+        assertThat(addResult.getExitCode()).as("add err: %s", addResult.getErr()).isEqualTo(0);
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "first commit", tempDir.toString());
-        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getExitCode()).as("commit out: %s err: %s", result.getOutput(), result.getErr()).isEqualTo(0);
         assertThat(result.getOutput()).contains("first commit");
 
         Repository repo = Repository.find(tempDir);
@@ -56,28 +70,22 @@ class CommitCommandTest {
     }
 
     /**
-     * 在嵌套目录结构中执行 commit，应成功创建包含子目录的 Tree。
-     * 示例：init → 创建 dir1/file1.txt 和 dir1/subdir/file2.txt → commit → 验证 commit 成功且包含嵌套的 tree 结构。
+     * 在嵌套目录结构中 add 后再 commit，应成功创建包含子目录的 Tree（从 index 构建）。
      */
     @Test
-    @DisplayName("commit 支持嵌套目录结构")
+    @DisplayName("add 嵌套目录后 commit 支持嵌套 tree 结构")
     void commit_withNestedDirectories_succeeds(@TempDir Path tempDir) throws Exception {
         JIT.execute("init", tempDir.toString());
 
-        // 创建嵌套目录结构
         Path dir1 = tempDir.resolve("dir1");
         Files.createDirectories(dir1);
-        Path file1 = dir1.resolve("file1.txt");
-        Files.write(file1, "content1".getBytes(StandardCharsets.UTF_8));
-
+        Files.write(dir1.resolve("file1.txt"), "content1".getBytes(StandardCharsets.UTF_8));
         Path subdir = dir1.resolve("subdir");
         Files.createDirectories(subdir);
-        Path file2 = subdir.resolve("file2.txt");
-        Files.write(file2, "content2".getBytes(StandardCharsets.UTF_8));
+        Files.write(subdir.resolve("file2.txt"), "content2".getBytes(StandardCharsets.UTF_8));
+        Files.write(tempDir.resolve("root.txt"), "root content".getBytes(StandardCharsets.UTF_8));
 
-        // 根目录也有文件
-        Path rootFile = tempDir.resolve("root.txt");
-        Files.write(rootFile, "root content".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "dir1", "root.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "nested commit", tempDir.toString());
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -89,29 +97,25 @@ class CommitCommandTest {
         assertThat(head).isNotNull();
         assertThat(head).hasSize(40);
         assertThat(repo.getDatabase().exists(head)).isTrue();
-
-        // 验证 commit 对象存在
         com.weixiao.repo.ObjectDatabase.RawObject commitObj = repo.getDatabase().load(head);
         assertThat(commitObj.getType()).isEqualTo("commit");
     }
 
     /**
-     * 在多层嵌套目录中执行 commit，验证 Merkle tree 结构正确。
-     * 示例：创建 a/b/c/d/file.txt → commit → 验证所有层级的 tree 都被创建。
+     * 在多层嵌套目录中 add 后再 commit，验证从 index 构建的 tree 正确。
      */
     @Test
-    @DisplayName("commit 支持多层嵌套目录")
+    @DisplayName("add 深层嵌套目录后 commit 成功")
     void commit_withDeepNestedDirectories_succeeds(@TempDir Path tempDir) throws Exception {
         JIT.execute("init", tempDir.toString());
-
-        // 创建深层嵌套目录结构 a/b/c/d/file.txt
         Path deepDir = tempDir.resolve("a").resolve("b").resolve("c").resolve("d");
         Files.createDirectories(deepDir);
-        Path deepFile = deepDir.resolve("file.txt");
-        Files.write(deepFile, "deep content".getBytes(StandardCharsets.UTF_8));
+        Files.write(deepDir.resolve("file.txt"), "deep content".getBytes(StandardCharsets.UTF_8));
 
+        ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "a");
+        assertThat(addResult.getExitCode()).as("add err: %s", addResult.getErr()).isEqualTo(0);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "deep nested", tempDir.toString());
-        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getExitCode()).as("commit out: %s err: %s", result.getOutput(), result.getErr()).isEqualTo(0);
 
         Repository repo = Repository.find(tempDir);
         assertThat(repo).isNotNull();
