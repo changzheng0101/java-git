@@ -99,11 +99,12 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
      * 采用分层检测策略以提高性能：
      * 1. 先比较文件大小（size），不同则一定 Modified
      * 2. 再比较文件权限（mode），不同则一定 Modified
-     * 3. 最后比较文件内容（oid），只有 size 和 mode 都相同时才计算 oid
+     * 3. 比较时间戳（ctime/mtime），如果都相同则认为是同一文件，无需读取内容
+     * 4. 最后比较文件内容（oid），只有前面都相同时才计算 oid
      *
-     * @param workspace   工作区，用于读取文件内容和获取文件权限
+     * @param workspace   工作区，用于读取文件内容和获取文件权限、stat
      * @param filePath    工作区文件的绝对路径
-     * @param entry       index 中对应的 Entry（包含 size、mode、oid）
+     * @param entry       index 中对应的 Entry（包含 size、mode、oid、stat）
      * @param relativePath 文件的相对路径（用于日志）
      * @return true 表示文件已修改，false 表示文件未修改
      */
@@ -124,7 +125,21 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             return true;
         }
 
-        // 3. size 和 mode 都相同，比较文件内容（oid）
+        // 3. 比较时间戳（ctime 和 mtime），如果都相同则认为是同一文件，无需读取内容计算 hash
+        if (entry.getStat() != null) {
+            com.weixiao.repo.Index.IndexStat workspaceStat = Workspace.getFileStat(filePath);
+            com.weixiao.repo.Index.IndexStat indexStat = entry.getStat();
+            if (workspaceStat.getCtimeSec() == indexStat.getCtimeSec()
+                    && workspaceStat.getCtimeNsec() == indexStat.getCtimeNsec()
+                    && workspaceStat.getMtimeSec() == indexStat.getMtimeSec()
+                    && workspaceStat.getMtimeNsec() == indexStat.getMtimeNsec()) {
+                // ctime 和 mtime 都相同，认为是同一文件，未修改
+                log.debug("unchanged: {} ctime/mtime match, skipping content check", relativePath);
+                return false;
+            }
+        }
+
+        // 4. size 和 mode 相同，但时间戳不同（或 stat 为 null），比较文件内容（oid）
         byte[] workspaceData = workspace.readFile(filePath);
         String workspaceOid = computeBlobOid(workspaceData);
         if (!workspaceOid.equals(entry.getOid())) {
