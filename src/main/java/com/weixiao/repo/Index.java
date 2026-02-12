@@ -219,10 +219,18 @@ public final class Index {
 
     /**
      * 添加或覆盖一条记录（同一 path 只保留一条）。stat 为文件真实属性（ctime/mtime/dev/ino/uid/gid）。
+     * 同时移除与“文件/目录”冲突的已有条目，避免出现同一名字既是文件又是目录：
+     * - 若新路径为 a/b（目录下的文件），则移除已有条目 a（原为文件，现为目录）。
+     * - 若新路径为 a（文件），则移除已有条目 a/xxx（原为目录下的文件，现 a 为文件）。
      */
     public void add(String path, String mode, String oid, int size, IndexStat stat) {
         String normalized = path.replace('\\', '/');
+        // 同路径覆盖
         entries.removeIf(e -> e.getPath().equals(normalized));
+        // 新路径是「目录/文件」时：移除原以该路径为名的文件（现为目录）
+        entries.removeIf(e -> normalized.startsWith(e.getPath() + "/"));
+        // 新路径是单层文件时：移除原在该路径「目录」下的所有条目（现该路径为文件）
+        entries.removeIf(e -> e.getPath().startsWith(normalized + "/"));
         entries.add(new Entry(normalized, mode, oid, size, stat));
         log.debug("add entry path={} mode={} oid={} size={} stat={}", normalized, mode, oid, size, stat);
     }

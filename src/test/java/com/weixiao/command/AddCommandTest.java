@@ -94,4 +94,32 @@ class AddCommandTest {
                 .collect(Collectors.toList());
         assertThat(paths).containsExactly("dir/f1.txt", "dir/f2.txt");
     }
+
+    /**
+     * 避免 hello.txt 与 hello.txt/a.txt 同时存在：先 add hello.txt，再 add hello.txt/a.txt 后，
+     * index 中只保留 hello.txt/a.txt。
+     */
+    @Test
+    @DisplayName("add hello.txt 再 add hello.txt/a.txt 时只保留 hello.txt/a.txt")
+    void add_helloThenHelloSlashA_removesHello(@TempDir Path tempDir) throws Exception {
+        Jit.createCommandLine().execute("init", tempDir.toString());
+        Files.write(tempDir.resolve("hello.txt"), "hello".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "hello.txt");
+
+        Path helloDir = tempDir.resolve("hello.txt");
+        Files.delete(helloDir);
+        Files.createDirectories(helloDir);
+        Files.write(helloDir.resolve("a.txt"), "a".getBytes(StandardCharsets.UTF_8));
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "hello.txt/a.txt");
+        assertThat(result.getExitCode()).as("add hello.txt/a.txt err: %s", result.getErr()).isEqualTo(0);
+
+        Repository repo = Repository.find(tempDir);
+        repo.getIndex().load();
+        List<String> paths = repo.getIndex().getEntries().stream()
+                .map(com.weixiao.repo.Index.Entry::getPath)
+                .sorted()
+                .collect(Collectors.toList());
+        assertThat(paths).containsExactly("hello.txt/a.txt");
+        assertThat(paths).doesNotContain("hello.txt");
+    }
 }
