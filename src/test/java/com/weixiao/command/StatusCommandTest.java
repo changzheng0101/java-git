@@ -3,6 +3,7 @@ package com.weixiao.command;
 import com.weixiao.Jit;
 import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.repo.Repository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -338,6 +339,79 @@ class StatusCommandTest {
         assertThat(result.getOutput()).contains("nothing to commit, working tree clean");
         assertThat(result.getOutput()).doesNotContain("new file:");
         assertThat(result.getOutput()).doesNotContain("committed.txt");
+    }
+
+    @Test
+    @DisplayName("index vs HEAD：已提交文件修改后 add，显示为 staged modified（Changes to be committed）")
+    void status_indexModified_staged(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("a.txt");
+        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
+        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Changes to be committed:");
+        assertThat(result.getOutput()).contains("modified:   a.txt");
+        assertThat(result.getOutput()).doesNotContain("new file:   a.txt");
+    }
+
+    @Test
+    @DisplayName("--porcelain 模式：index modified 输出第一列为 M")
+    void status_porcelain_indexModified(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("f.txt");
+        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
+        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("M  f.txt");
+    }
+
+    @Test
+    @DisplayName("index vs HEAD：HEAD 中有但 index 中已移除的文件显示为 staged deleted")
+    void status_indexDeleted_staged(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("rm.txt");
+        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "rm.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "add rm.txt");
+        Repository repo = Repository.find(tempDir);
+        assertThat(repo).isNotNull();
+        repo.getIndex().load();
+        repo.getIndex().remove("rm.txt");
+        repo.getIndex().save();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Changes to be committed:");
+        assertThat(result.getOutput()).contains("deleted:    rm.txt");
+    }
+
+    @Test
+    @DisplayName("--porcelain 模式：index deleted 输出第一列为 D")
+    void status_porcelain_indexDeleted(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("d.txt");
+        Files.write(file, "x".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "d.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "add d");
+        Repository repo = Repository.find(tempDir);
+        assertThat(repo).isNotNull();
+        repo.getIndex().load();
+        repo.getIndex().remove("d.txt");
+        repo.getIndex().save();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("D  d.txt");
     }
 
     @Test

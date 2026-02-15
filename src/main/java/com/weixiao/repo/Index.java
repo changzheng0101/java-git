@@ -235,6 +235,15 @@ public final class Index {
         log.debug("add entry path={} mode={} oid={} size={} stat={}", normalized, mode, oid, size, stat);
     }
 
+    /**
+     * 从暂存区移除指定路径的条目（用于如 rm --cached 的场景）。
+     */
+    public void remove(String path) {
+        String normalized = path.replace('\\', '/');
+        entries.removeIf(e -> e.getPath().equals(normalized));
+        log.debug("remove entry path={}", normalized);
+    }
+
     /** 返回当前所有暂存条目（只读）。 */
     public List<Entry> getEntries() {
         return new ArrayList<>(entries);

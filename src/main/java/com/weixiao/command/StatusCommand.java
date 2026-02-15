@@ -15,7 +15,6 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * jit status - 显示工作区状态，当前支持列出未跟踪文件（untracked files）。
@@ -51,53 +50,63 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             repo.getIndex().load();
             Path root = repo.getRoot();
             StatusResult result = collectStatus(repo, root);
-            Set<String> modified = result.getModified();
-            Set<String> deleted = result.getDeleted();
-            Set<String> untracked = result.getUntracked();
-            Set<String> added = result.getAdded();
+            Set<String> workspaceModified = result.getWorkspaceModified();
+            Set<String> workspaceDeleted = result.getWorkspaceDeleted();
+            Set<String> workspaceUntracked = result.getWorkspaceUntracked();
+            Set<String> indexAdded = result.getIndexAdded();
+            Set<String> indexDeleted = result.getIndexDeleted();
+            Set<String> indexModified = result.getIndexModified();
 
             if (porcelain) {
                 // 机器可读格式与 Git 一致：第一列为 index vs HEAD，第二列为 workspace vs index，无则用空格；untracked 为 "??"
                 Set<String> indexPaths = new HashSet<>();
-                indexPaths.addAll(added);
-                indexPaths.addAll(modified);
-                indexPaths.addAll(deleted);
-                List<String> sortedIndexPaths = indexPaths.stream().sorted().collect(Collectors.toList());
+                indexPaths.addAll(indexAdded);
+                indexPaths.addAll(indexModified);
+                indexPaths.addAll(indexDeleted);
+                indexPaths.addAll(workspaceModified);
+                indexPaths.addAll(workspaceDeleted);
+                List<String> sortedIndexPaths = indexPaths.stream().sorted().toList();
                 for (String p : sortedIndexPaths) {
-                    String line = formatPorcelainLine(p, added, modified, deleted);
+                    String line = formatPorcelainLine(p, indexAdded, indexModified, indexDeleted, workspaceModified, workspaceDeleted);
                     if (line != null) {
                         System.out.println(line);
                     }
                 }
-                for (String p : untracked.stream().sorted().collect(Collectors.toList())) {
+                for (String p : workspaceUntracked.stream().sorted().toList()) {
                     System.out.println("?? " + p);
                 }
             } else {
                 // 人类可读格式
                 boolean hasChanges = false;
-                // Changes to be committed (staged changes)
-                if (!added.isEmpty()) {
+                // Changes to be committed (index vs HEAD)
+                if (!indexAdded.isEmpty() || !indexModified.isEmpty() || !indexDeleted.isEmpty()) {
                     System.out.println("Changes to be committed:");
-                    for (String p : added.stream().sorted().collect(Collectors.toList())) {
+                    for (String p : indexAdded.stream().sorted().toList()) {
                         System.out.println("  new file:   " + p);
+                    }
+                    for (String p : indexModified.stream().sorted().toList()) {
+                        System.out.println("  modified:   " + p);
+                    }
+                    for (String p : indexDeleted.stream().sorted().toList()) {
+                        System.out.println("  deleted:    " + p);
                     }
                     hasChanges = true;
                 }
-                // Changes not staged for commit
-                if (!modified.isEmpty() || !deleted.isEmpty()) {
+                // Changes not staged for commit (workspace vs index)
+                if (!workspaceModified.isEmpty() || !workspaceDeleted.isEmpty()) {
                     System.out.println("Changes not staged for commit:");
-                    for (String p : modified.stream().sorted().collect(Collectors.toList())) {
+                    for (String p : workspaceModified.stream().sorted().toList()) {
                         System.out.println("  modified:   " + p);
                     }
-                    for (String p : deleted.stream().sorted().collect(Collectors.toList())) {
+                    for (String p : workspaceDeleted.stream().sorted().toList()) {
                         System.out.println("  deleted:    " + p);
                     }
                     hasChanges = true;
                 }
                 // Untracked files
-                if (!untracked.isEmpty()) {
+                if (!workspaceUntracked.isEmpty()) {
                     System.out.println("Untracked files:");
-                    for (String p : untracked.stream().sorted().collect(Collectors.toList())) {
+                    for (String p : workspaceUntracked.stream().sorted().toList()) {
                         System.out.println("  " + p);
                     }
                     hasChanges = true;
@@ -114,14 +123,22 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
     }
 
     /**
-     * 将 index 中的一条路径映射为 porcelain 格式的一行。
-     * 第一列为 index vs HEAD（A=added，空格=未变），第二列为 workspace vs index（M=modified，D=deleted，空格=未变）。
+     * 将一条路径映射为 porcelain 格式的一行。
+     * 第一列为 index vs HEAD（A/M/D/空格），第二列为 workspace vs index（M/D/空格）。
      * 若两列均为空格则返回 null（调用方不输出）。
      */
     private static String formatPorcelainLine(String path,
-                                              Set<String> added, Set<String> modified, Set<String> deleted) {
-        char col1 = added.contains(path) ? 'A' : ' ';
-        char col2 = modified.contains(path) ? 'M' : (deleted.contains(path) ? 'D' : ' ');
+                                              Set<String> indexAdded, Set<String> indexModified, Set<String> indexDeleted,
+                                              Set<String> workspaceModified, Set<String> workspaceDeleted) {
+        char col1 = ' ';
+        col1 = indexAdded.contains(path) ? 'A' : col1;
+        col1 = indexModified.contains(path) ? 'M' : col1;
+        col1 = indexDeleted.contains(path) ? 'D' : col1;
+
+        char col2 = ' ';
+        col2 = workspaceModified.contains(path) ? 'M' : col2;
+        col2 = workspaceDeleted.contains(path) ? 'D' : col2;
+
         if (col1 == ' ' && col2 == ' ') return null;
         return "" + col1 + col2 + " " + path;
     }
@@ -217,60 +234,60 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             pathToEntry.put(e.getPath(), e);
         }
         Set<String> trackedPaths = pathToEntry.keySet();
-        
+
         // 递归收集工作区所有文件路径（相对路径，排序）
         List<WorkspaceFile> workspaceFiles = new ArrayList<>();
         collectWorkspaceFiles(repo, root, "", trackedPaths, workspaceFiles);
-        Collections.sort(workspaceFiles, Comparator.comparing(WorkspaceFile::getRelativePath));
-        
-        // 准备 HEAD tree 路径（用于比较 index 和 HEAD）
-        List<String> headPaths = prepareHeadPaths(repo);
-        
+        workspaceFiles.sort(Comparator.comparing(WorkspaceFile::getRelativePath));
+
+        // 准备 HEAD tree 中 path -> blob OID（用于比较 index 和 HEAD）
+        Map<String, String> headPathToOid = prepareHeadPathToOid(repo);
+
         // 创建 StatusResult，由两个比较方法共同维护
         StatusResult result = new StatusResult();
-        
-        // 比较 index 和工作区（填充 modified、deleted、untracked）
+
+        // 比较 index 和工作区（填充 workspaceModified、workspaceDeleted、workspaceUntracked）
         compareIndexToWorkspace(repo.getWorkspace(), indexEntries, pathToEntry, workspaceFiles, result);
-        
-        // 比较 index 和 HEAD（填充 added）
-        compareIndexToHEAD(indexEntries, headPaths, result);
-        
+
+        // 比较 index 和 HEAD（填充 indexAdded、indexDeleted、indexModified）
+        compareIndexToHEAD(indexEntries, headPathToOid, result);
+
         return result;
     }
 
     /**
      * 使用双指针同步遍历方式比较 index 和工作区，填充 Modified、Deleted 和 Untracked。
      *
-     * @param workspace     工作区，用于读取文件内容和获取文件元数据
-     * @param indexEntries  排序后的 index entries 列表
-     * @param pathToEntry   path 到 index Entry 的映射，用于查找文件对应的 entry
+     * @param workspace      工作区，用于读取文件内容和获取文件元数据
+     * @param indexEntries   排序后的 index entries 列表
+     * @param pathToEntry    path 到 index Entry 的映射，用于查找文件对应的 entry
      * @param workspaceFiles 排序后的工作区文件列表
-     * @param result        用于填充结果的 StatusResult 对象
+     * @param result         用于填充结果的 StatusResult 对象
      */
     private void compareIndexToWorkspace(Workspace workspace,
-                                        List<com.weixiao.repo.Index.Entry> indexEntries,
-                                        Map<String, com.weixiao.repo.Index.Entry> pathToEntry,
-                                        List<WorkspaceFile> workspaceFiles,
-                                        StatusResult result) throws IOException {
+                                         List<com.weixiao.repo.Index.Entry> indexEntries,
+                                         Map<String, com.weixiao.repo.Index.Entry> pathToEntry,
+                                         List<WorkspaceFile> workspaceFiles,
+                                         StatusResult result) throws IOException {
         int indexIdx = 0;
         int workspaceIdx = 0;
-        
+
         while (indexIdx < indexEntries.size() || workspaceIdx < workspaceFiles.size()) {
             String indexPath = indexIdx < indexEntries.size() ? indexEntries.get(indexIdx).getPath() : null;
             String workspacePath = workspaceIdx < workspaceFiles.size() ? workspaceFiles.get(workspaceIdx).getRelativePath() : null;
-            
+
             if (workspacePath == null) {
-                // 工作区遍历完毕，index 中剩余的都是 deleted
-                result.getDeleted().add(indexPath);
-                log.debug("deleted: {}", indexPath);
+                // 工作区遍历完毕，index 中剩余的都是 workspace deleted
+                result.getWorkspaceDeleted().add(indexPath);
+                log.debug("workspace deleted: {}", indexPath);
                 indexIdx++;
             } else if (indexPath == null) {
                 // index 遍历完毕，工作区中剩余的都是 untracked
                 WorkspaceFile wsFile = workspaceFiles.get(workspaceIdx);
                 if (wsFile.isDirectory()) {
-                    result.getUntracked().add(workspacePath + "/");
+                    result.getWorkspaceUntracked().add(workspacePath + "/");
                 } else {
-                    result.getUntracked().add(workspacePath);
+                    result.getWorkspaceUntracked().add(workspacePath);
                 }
                 workspaceIdx++;
             } else {
@@ -279,25 +296,25 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
                     // 工作区路径 < index 路径：工作区文件不在 index 中 -> untracked
                     WorkspaceFile wsFile = workspaceFiles.get(workspaceIdx);
                     if (wsFile.isDirectory()) {
-                        result.getUntracked().add(workspacePath + "/");
+                        result.getWorkspaceUntracked().add(workspacePath + "/");
                     } else {
-                        result.getUntracked().add(workspacePath);
+                        result.getWorkspaceUntracked().add(workspacePath);
                     }
                     workspaceIdx++;
                 } else if (cmp > 0) {
-                    // 工作区路径 > index 路径：index 中的文件在工作区不存在 -> deleted
-                    result.getDeleted().add(indexPath);
-                    log.debug("deleted: {}", indexPath);
+                    // 工作区路径 > index 路径：index 中的文件在工作区不存在 -> workspace deleted
+                    result.getWorkspaceDeleted().add(indexPath);
+                    log.debug("workspace deleted: {}", indexPath);
                     indexIdx++;
                 } else {
-                    // 工作区路径 == index 路径：已跟踪文件 -> 检查是否 modified
+                    // 工作区路径 == index 路径：已跟踪文件 -> 检查是否 workspace modified
                     WorkspaceFile wsFile = workspaceFiles.get(workspaceIdx);
                     if (!wsFile.isDirectory()) {
                         com.weixiao.repo.Index.Entry entry = pathToEntry.get(indexPath);
                         // 使用缓存的 stat 信息，避免重复文件系统访问
                         if (isFileModified(workspace, wsFile.getAbsolutePath(), entry,
                                 wsFile.getStat(), wsFile.getMode(), wsFile.getSize(), indexPath)) {
-                            result.getModified().add(indexPath);
+                            result.getWorkspaceModified().add(indexPath);
                         }
                     }
                     indexIdx++;
@@ -310,17 +327,16 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
     /**
      * 准备 HEAD tree 中的所有文件路径（排序后的列表）。
      * 如果没有 HEAD，返回空列表。
+     * 收集 HEAD 对应 tree 中所有文件路径及其 blob OID，用于 index 与 HEAD 对比
      *
      * @param repo 仓库对象，用于读取 HEAD commit 和 tree
      * @return HEAD tree 中的文件路径列表（已排序），如果没有 HEAD 则返回空列表
      */
-    private List<String> prepareHeadPaths(Repository repo) throws IOException {
+    private Map<String, String> prepareHeadPathToOid(Repository repo) throws IOException {
         String headOid = repo.getRefs().readHead();
         if (headOid == null) {
-            return new ArrayList<>();
+            return new HashMap<>();
         }
-
-        // 读取 HEAD commit，获取 tree oid
         com.weixiao.repo.ObjectDatabase.RawObject commitRaw = repo.getDatabase().load(headOid);
         if (!"commit".equals(commitRaw.getType())) {
             throw new IOException("HEAD is not a commit: " + headOid);
@@ -329,55 +345,80 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
         if (treeOid == null) {
             throw new IOException("invalid commit format: " + headOid);
         }
-
-        // 递归收集 HEAD tree 中的所有文件路径
-        List<String> headPaths = new ArrayList<>();
-        collectTreePaths(repo, treeOid, "", headPaths);
-        Collections.sort(headPaths);
-        return headPaths;
+        Map<String, String> pathToOid = new HashMap<>();
+        collectTreePathToOid(repo, treeOid, "", pathToOid);
+        return pathToOid;
     }
 
     /**
-     * 使用双指针同步遍历方式比较 index 和 HEAD，填充 Added。
+     * 递归收集 tree 中所有文件路径及其 blob OID。
+     */
+    private void collectTreePathToOid(Repository repo, String treeOid, String prefix, Map<String, String> result) throws IOException {
+        com.weixiao.repo.ObjectDatabase.RawObject treeRaw = repo.getDatabase().load(treeOid);
+        if (!"tree".equals(treeRaw.getType())) {
+            throw new IOException("expected tree, got " + treeRaw.getType() + ": " + treeOid);
+        }
+        List<com.weixiao.obj.TreeEntry> entries = parseTree(treeRaw.getBody());
+        for (com.weixiao.obj.TreeEntry entry : entries) {
+            String path = prefix.isEmpty() ? entry.getName() : prefix + "/" + entry.getName();
+            if ("40000".equals(entry.getMode())) {
+                collectTreePathToOid(repo, entry.getOid(), path, result);
+            } else {
+                result.put(path, entry.getOid());
+            }
+        }
+    }
+
+    /**
+     * 使用双指针同步遍历方式比较 index 和 HEAD，填充 indexAdded、indexDeleted、indexModified。
      *
-     * @param indexEntries 排序后的 index entries 列表
-     * @param headPaths    排序后的 HEAD tree 文件路径列表
-     * @param result       用于填充结果的 StatusResult 对象
+     * @param indexEntries  排序后的 index entries 列表
+     * @param headPathToOid HEAD tree 中 path -> blob OID
+     * @param result        用于填充结果的 StatusResult 对象
      */
     private void compareIndexToHEAD(List<com.weixiao.repo.Index.Entry> indexEntries,
-                                    List<String> headPaths,
+                                    Map<String, String> headPathToOid,
                                     StatusResult result) {
-        // 如果没有 HEAD，index 中所有文件都是 added
+        List<String> headPaths = new ArrayList<>(headPathToOid.keySet());
+        Collections.sort(headPaths);
+
         if (headPaths.isEmpty()) {
             for (com.weixiao.repo.Index.Entry entry : indexEntries) {
-                result.getAdded().add(entry.getPath());
+                result.getIndexAdded().add(entry.getPath());
             }
             return;
         }
 
-        // 使用双指针算法比较 index 和 HEAD
         int indexIdx = 0;
         int headIdx = 0;
 
-        while (indexIdx < indexEntries.size()) {
-            String indexPath = indexEntries.get(indexIdx).getPath();
+        while (indexIdx < indexEntries.size() || headIdx < headPaths.size()) {
+            String indexPath = indexIdx < indexEntries.size() ? indexEntries.get(indexIdx).getPath() : null;
             String headPath = headIdx < headPaths.size() ? headPaths.get(headIdx) : null;
 
-            if (headPath == null) {
-                // HEAD 遍历完毕，index 中剩余的都是 added
-                result.getAdded().add(indexPath);
+            if (indexPath == null) {
+                // index 遍历完毕，HEAD 中剩余的都是 index deleted（在 HEAD 中但不在 index 中）
+                result.getIndexDeleted().add(headPath);
+                headIdx++;
+            } else if (headPath == null) {
+                // HEAD 遍历完毕，index 中剩余的都是 index added
+                result.getIndexAdded().add(indexPath);
                 indexIdx++;
             } else {
                 int cmp = indexPath.compareTo(headPath);
                 if (cmp < 0) {
-                    // index 路径 < HEAD 路径：在 index 中但不在 HEAD 中 -> added
-                    result.getAdded().add(indexPath);
+                    result.getIndexAdded().add(indexPath);
                     indexIdx++;
                 } else if (cmp > 0) {
-                    // index 路径 > HEAD 路径：在 HEAD 中但不在 index 中（可能是 deleted，但这里只关心 added）
+                    result.getIndexDeleted().add(headPath);
                     headIdx++;
                 } else {
-                    // 路径相同，跳过
+                    // 路径相同：比较 OID，不同则为 index modified
+                    String indexOid = indexEntries.get(indexIdx).getOid();
+                    String headOid = headPathToOid.get(headPath);
+                    if (headOid != null && !indexOid.equals(headOid)) {
+                        result.getIndexModified().add(indexPath);
+                    }
                     indexIdx++;
                     headIdx++;
                 }
@@ -398,33 +439,6 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             }
         }
         return null;
-    }
-
-    /**
-     * 递归收集 tree 中的所有文件路径（相对路径）。
-     *
-     * @param repo     仓库对象，用于读取 tree 对象
-     * @param treeOid  tree 对象的 oid
-     * @param prefix   当前路径前缀（如 "" 或 "dir/"）
-     * @param result   结果列表，收集到的文件路径会添加到这里
-     */
-    private void collectTreePaths(Repository repo, String treeOid, String prefix, List<String> result) throws IOException {
-        com.weixiao.repo.ObjectDatabase.RawObject treeRaw = repo.getDatabase().load(treeOid);
-        if (!"tree".equals(treeRaw.getType())) {
-            throw new IOException("expected tree, got " + treeRaw.getType() + ": " + treeOid);
-        }
-
-        List<com.weixiao.obj.TreeEntry> entries = parseTree(treeRaw.getBody());
-        for (com.weixiao.obj.TreeEntry entry : entries) {
-            String path = prefix.isEmpty() ? entry.getName() : prefix + "/" + entry.getName();
-            if ("40000".equals(entry.getMode())) {
-                // 目录，递归处理
-                collectTreePaths(repo, entry.getOid(), path, result);
-            } else {
-                // 文件，添加到结果列表
-                result.add(path);
-            }
-        }
     }
 
     /**
@@ -478,12 +492,12 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
                                        List<WorkspaceFile> result) throws IOException {
         Workspace workspace = repo.getWorkspace();
         List<Path> entries = workspace.listEntries(dir);
-        Collections.sort(entries, (a, b) -> a.getFileName().toString().compareTo(b.getFileName().toString()));
-        
+        entries.sort(Comparator.comparing(a -> a.getFileName().toString()));
+
         for (Path child : entries) {
             String name = child.getFileName().toString();
             String relativePath = prefix.isEmpty() ? name : prefix + "/" + name;
-            
+
             if (Files.isRegularFile(child)) {
                 // 对于 tracked 文件，缓存 stat 信息（参考 Git 实现）
                 if (trackedPaths.contains(relativePath)) {
@@ -509,7 +523,9 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
         }
     }
 
-    /** 工作区文件/目录信息，用于双指针比较。对于 tracked 文件缓存 stat 信息以提高性能。 */
+    /**
+     * 工作区文件/目录信息，用于双指针比较。对于 tracked 文件缓存 stat 信息以提高性能。
+     */
     private static final class WorkspaceFile {
         private final String relativePath;
         private final Path absolutePath;
@@ -518,14 +534,18 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
         private final String mode;    // null 表示未缓存
         private final com.weixiao.repo.Index.IndexStat stat;  // null 表示未缓存
 
-        /** 构造 untracked 文件/目录（不缓存 stat）。 */
+        /**
+         * 构造 untracked 文件/目录（不缓存 stat）。
+         */
         WorkspaceFile(String relativePath, Path absolutePath, boolean directory) {
             this(relativePath, absolutePath, directory, null, null, null);
         }
 
-        /** 构造 tracked 文件（缓存 stat）。 */
+        /**
+         * 构造 tracked 文件（缓存 stat）。
+         */
         WorkspaceFile(String relativePath, Path absolutePath, boolean directory,
-                     Long fileSize, String mode, com.weixiao.repo.Index.IndexStat stat) {
+                      Long fileSize, String mode, com.weixiao.repo.Index.IndexStat stat) {
             this.relativePath = relativePath;
             this.absolutePath = absolutePath;
             this.directory = directory;
@@ -534,25 +554,67 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             this.stat = stat;
         }
 
-        String getRelativePath() { return relativePath; }
-        Path getAbsolutePath() { return absolutePath; }
-        boolean isDirectory() { return directory; }
-        long getSize() { return fileSize != null ? fileSize : 0L; }
-        String getMode() { return mode; }
-        com.weixiao.repo.Index.IndexStat getStat() { return stat; }
+        String getRelativePath() {
+            return relativePath;
+        }
+
+        Path getAbsolutePath() {
+            return absolutePath;
+        }
+
+        boolean isDirectory() {
+            return directory;
+        }
+
+        long getSize() {
+            return fileSize != null ? fileSize : 0L;
+        }
+
+        String getMode() {
+            return mode;
+        }
+
+        com.weixiao.repo.Index.IndexStat getStat() {
+            return stat;
+        }
     }
 
-    /** 一次遍历得到的 Modified、Deleted、Untracked 与 Added 结果。 */
+    /**
+     * 一次遍历得到的结果：workspace 与 index 对比三种；index 与 HEAD 对比三种。
+     */
     private static final class StatusResult {
-        private final Set<String> modified = new HashSet<>();
-        private final Set<String> deleted = new HashSet<>();
-        private final Set<String> untracked = new HashSet<>();
-        private final Set<String> added = new HashSet<>();
+        // workspace vs index
+        private final Set<String> workspaceModified = new HashSet<>();
+        private final Set<String> workspaceDeleted = new HashSet<>();
+        private final Set<String> workspaceUntracked = new HashSet<>();
+        // index vs HEAD
+        private final Set<String> indexAdded = new HashSet<>();
+        private final Set<String> indexDeleted = new HashSet<>();
+        private final Set<String> indexModified = new HashSet<>();
 
-        Set<String> getModified() { return modified; }
-        Set<String> getDeleted() { return deleted; }
-        Set<String> getUntracked() { return untracked; }
-        Set<String> getAdded() { return added; }
+        Set<String> getWorkspaceModified() {
+            return workspaceModified;
+        }
+
+        Set<String> getWorkspaceDeleted() {
+            return workspaceDeleted;
+        }
+
+        Set<String> getWorkspaceUntracked() {
+            return workspaceUntracked;
+        }
+
+        Set<String> getIndexAdded() {
+            return indexAdded;
+        }
+
+        Set<String> getIndexDeleted() {
+            return indexDeleted;
+        }
+
+        Set<String> getIndexModified() {
+            return indexModified;
+        }
     }
 
     /**
