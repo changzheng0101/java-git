@@ -7,14 +7,22 @@ import com.weixiao.command.StatusCommand;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 /**
  * jit - 用 Java 实现的 Git 风格命令行入口。
  * 替代 git，通过子命令扩展功能（如 init、commit、status 等）。
  * <p>
  * 所有 jit 命令的执行都应通过此类作为唯一入口点。
+ * 仓库根目录（或命令起始目录）由本类的 -C / -d 统一提供，子命令通过 {@link #getStartPath()} 获取。
  */
 @Command(name = "jit", mixinStandardHelpOptions = true, description = "jit - 版本控制")
 public class Jit implements Runnable {
+
+    @Option(names = {"-C", "-d", "--directory"}, paramLabel = "PATH",
+            description = "以指定路径作为工作目录执行命令（默认为当前目录），子命令据此查找仓库根")
+    private Path workingDirectory;
 
     /**
      * 未指定子命令时打印用法说明。
@@ -22,6 +30,17 @@ public class Jit implements Runnable {
     @Override
     public void run() {
         new CommandLine(this).usage(System.out);
+    }
+
+    /**
+     * 返回命令的起始路径（工作目录）。
+     * 子命令应使用此路径：init 在此路径下创建 .git；add/commit/status 从此路径向上查找 .git 得到仓库根。
+     *
+     * @return 已规范化的绝对路径，不会为 null
+     */
+    public Path getStartPath() {
+        Path base = workingDirectory != null ? workingDirectory : Paths.get("");
+        return base.toAbsolutePath().normalize();
     }
 
     /**

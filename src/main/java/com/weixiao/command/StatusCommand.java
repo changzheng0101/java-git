@@ -1,5 +1,6 @@
 package com.weixiao.command;
 
+import com.weixiao.Jit;
 import com.weixiao.obj.Blob;
 import com.weixiao.repo.Repository;
 import com.weixiao.repo.Workspace;
@@ -11,7 +12,6 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -25,8 +25,8 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(StatusCommand.class);
 
-    @Parameters(index = "0", arity = "0..1", description = "仓库根路径，默认为当前目录")
-    private Path path;
+    @ParentCommand
+    private Jit jit;
 
     @Option(names = {"--porcelain"}, description = "以机器可读格式输出（每行一个文件，格式：?? <path> 或  M <path>）")
     private boolean porcelain;
@@ -36,7 +36,7 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
     @Override
     public void run() {
         exitCode = 0;
-        Path start = path != null ? path.toAbsolutePath().normalize() : Paths.get("").toAbsolutePath().normalize();
+        Path start = jit.getStartPath();
         log.debug("status start path={}", start);
 
         Repository repo = Repository.find(start);
@@ -51,17 +51,23 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             repo.getIndex().load();
             Path root = repo.getRoot();
             StatusResult result = collectStatus(repo, root);
-            List<String> modified = result.getModified();
-            List<String> deleted = result.getDeleted();
-            List<String> untracked = result.getUntracked();
+            Set<String> modified = result.getModified();
+            Set<String> deleted = result.getDeleted();
+            Set<String> untracked = result.getUntracked();
+            Set<String> added = result.getAdded();
 
             if (porcelain) {
-                // 机器可读格式：Modified 为 " M <path>"，Deleted 为 " D <path>"，Untracked 为 "?? <path>"
-                for (String p : modified.stream().sorted().collect(Collectors.toList())) {
-                    System.out.println(" M " + p);
-                }
-                for (String p : deleted.stream().sorted().collect(Collectors.toList())) {
-                    System.out.println(" D " + p);
+                // 机器可读格式与 Git 一致：第一列为 index vs HEAD，第二列为 workspace vs index，无则用空格；untracked 为 "??"
+                Set<String> indexPaths = new HashSet<>();
+                indexPaths.addAll(added);
+                indexPaths.addAll(modified);
+                indexPaths.addAll(deleted);
+                List<String> sortedIndexPaths = indexPaths.stream().sorted().collect(Collectors.toList());
+                for (String p : sortedIndexPaths) {
+                    String line = formatPorcelainLine(p, added, modified, deleted);
+                    if (line != null) {
+                        System.out.println(line);
+                    }
                 }
                 for (String p : untracked.stream().sorted().collect(Collectors.toList())) {
                     System.out.println("?? " + p);
@@ -69,6 +75,15 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             } else {
                 // 人类可读格式
                 boolean hasChanges = false;
+                // Changes to be committed (staged changes)
+                if (!added.isEmpty()) {
+                    System.out.println("Changes to be committed:");
+                    for (String p : added.stream().sorted().collect(Collectors.toList())) {
+                        System.out.println("  new file:   " + p);
+                    }
+                    hasChanges = true;
+                }
+                // Changes not staged for commit
                 if (!modified.isEmpty() || !deleted.isEmpty()) {
                     System.out.println("Changes not staged for commit:");
                     for (String p : modified.stream().sorted().collect(Collectors.toList())) {
@@ -79,6 +94,7 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
                     }
                     hasChanges = true;
                 }
+                // Untracked files
                 if (!untracked.isEmpty()) {
                     System.out.println("Untracked files:");
                     for (String p : untracked.stream().sorted().collect(Collectors.toList())) {
@@ -95,6 +111,19 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
+    }
+
+    /**
+     * 将 index 中的一条路径映射为 porcelain 格式的一行。
+     * 第一列为 index vs HEAD（A=added，空格=未变），第二列为 workspace vs index（M=modified，D=deleted，空格=未变）。
+     * 若两列均为空格则返回 null（调用方不输出）。
+     */
+    private static String formatPorcelainLine(String path,
+                                              Set<String> added, Set<String> modified, Set<String> deleted) {
+        char col1 = added.contains(path) ? 'A' : ' ';
+        char col2 = modified.contains(path) ? 'M' : (deleted.contains(path) ? 'D' : ' ');
+        if (col1 == ' ' && col2 == ' ') return null;
+        return "" + col1 + col2 + " " + path;
     }
 
     /**
@@ -194,25 +223,35 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
         collectWorkspaceFiles(repo, root, "", trackedPaths, workspaceFiles);
         Collections.sort(workspaceFiles, Comparator.comparing(WorkspaceFile::getRelativePath));
         
-        // 比较工作区和 index
-        return compareWorkspaceToIndex(repo.getWorkspace(), indexEntries, pathToEntry, workspaceFiles);
+        // 准备 HEAD tree 路径（用于比较 index 和 HEAD）
+        List<String> headPaths = prepareHeadPaths(repo);
+        
+        // 创建 StatusResult，由两个比较方法共同维护
+        StatusResult result = new StatusResult();
+        
+        // 比较 index 和工作区（填充 modified、deleted、untracked）
+        compareIndexToWorkspace(repo.getWorkspace(), indexEntries, pathToEntry, workspaceFiles, result);
+        
+        // 比较 index 和 HEAD（填充 added）
+        compareIndexToHEAD(indexEntries, headPaths, result);
+        
+        return result;
     }
 
     /**
-     * 使用双指针同步遍历方式比较工作区和 index，返回 Modified、Deleted 和 Untracked。
-     * 该方法可被复用，未来也可用于比较 index 和 HEAD。
+     * 使用双指针同步遍历方式比较 index 和工作区，填充 Modified、Deleted 和 Untracked。
      *
      * @param workspace     工作区，用于读取文件内容和获取文件元数据
      * @param indexEntries  排序后的 index entries 列表
      * @param pathToEntry   path 到 index Entry 的映射，用于查找文件对应的 entry
      * @param workspaceFiles 排序后的工作区文件列表
-     * @return 包含 Modified、Deleted、Untracked 的 StatusResult
+     * @param result        用于填充结果的 StatusResult 对象
      */
-    private StatusResult compareWorkspaceToIndex(Workspace workspace,
-                                                List<com.weixiao.repo.Index.Entry> indexEntries,
-                                                Map<String, com.weixiao.repo.Index.Entry> pathToEntry,
-                                                List<WorkspaceFile> workspaceFiles) throws IOException {
-        StatusResult result = new StatusResult();
+    private void compareIndexToWorkspace(Workspace workspace,
+                                        List<com.weixiao.repo.Index.Entry> indexEntries,
+                                        Map<String, com.weixiao.repo.Index.Entry> pathToEntry,
+                                        List<WorkspaceFile> workspaceFiles,
+                                        StatusResult result) throws IOException {
         int indexIdx = 0;
         int workspaceIdx = 0;
         
@@ -266,8 +305,167 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
                 }
             }
         }
-        
-        return result;
+    }
+
+    /**
+     * 准备 HEAD tree 中的所有文件路径（排序后的列表）。
+     * 如果没有 HEAD，返回空列表。
+     *
+     * @param repo 仓库对象，用于读取 HEAD commit 和 tree
+     * @return HEAD tree 中的文件路径列表（已排序），如果没有 HEAD 则返回空列表
+     */
+    private List<String> prepareHeadPaths(Repository repo) throws IOException {
+        String headOid = repo.getRefs().readHead();
+        if (headOid == null) {
+            return new ArrayList<>();
+        }
+
+        // 读取 HEAD commit，获取 tree oid
+        com.weixiao.repo.ObjectDatabase.RawObject commitRaw = repo.getDatabase().load(headOid);
+        if (!"commit".equals(commitRaw.getType())) {
+            throw new IOException("HEAD is not a commit: " + headOid);
+        }
+        String treeOid = parseCommitTreeOid(commitRaw.getBody());
+        if (treeOid == null) {
+            throw new IOException("invalid commit format: " + headOid);
+        }
+
+        // 递归收集 HEAD tree 中的所有文件路径
+        List<String> headPaths = new ArrayList<>();
+        collectTreePaths(repo, treeOid, "", headPaths);
+        Collections.sort(headPaths);
+        return headPaths;
+    }
+
+    /**
+     * 使用双指针同步遍历方式比较 index 和 HEAD，填充 Added。
+     *
+     * @param indexEntries 排序后的 index entries 列表
+     * @param headPaths    排序后的 HEAD tree 文件路径列表
+     * @param result       用于填充结果的 StatusResult 对象
+     */
+    private void compareIndexToHEAD(List<com.weixiao.repo.Index.Entry> indexEntries,
+                                    List<String> headPaths,
+                                    StatusResult result) {
+        // 如果没有 HEAD，index 中所有文件都是 added
+        if (headPaths.isEmpty()) {
+            for (com.weixiao.repo.Index.Entry entry : indexEntries) {
+                result.getAdded().add(entry.getPath());
+            }
+            return;
+        }
+
+        // 使用双指针算法比较 index 和 HEAD
+        int indexIdx = 0;
+        int headIdx = 0;
+
+        while (indexIdx < indexEntries.size()) {
+            String indexPath = indexEntries.get(indexIdx).getPath();
+            String headPath = headIdx < headPaths.size() ? headPaths.get(headIdx) : null;
+
+            if (headPath == null) {
+                // HEAD 遍历完毕，index 中剩余的都是 added
+                result.getAdded().add(indexPath);
+                indexIdx++;
+            } else {
+                int cmp = indexPath.compareTo(headPath);
+                if (cmp < 0) {
+                    // index 路径 < HEAD 路径：在 index 中但不在 HEAD 中 -> added
+                    result.getAdded().add(indexPath);
+                    indexIdx++;
+                } else if (cmp > 0) {
+                    // index 路径 > HEAD 路径：在 HEAD 中但不在 index 中（可能是 deleted，但这里只关心 added）
+                    headIdx++;
+                } else {
+                    // 路径相同，跳过
+                    indexIdx++;
+                    headIdx++;
+                }
+            }
+        }
+    }
+
+    /**
+     * 从 commit body 中解析 tree oid。
+     * commit 格式：tree <oid>\nparent ...\nauthor ...\ncommitter ...\n\nmessage
+     */
+    private String parseCommitTreeOid(byte[] commitBody) {
+        String content = new String(commitBody, java.nio.charset.StandardCharsets.UTF_8);
+        String[] lines = content.split("\n");
+        for (String line : lines) {
+            if (line.startsWith("tree ")) {
+                return line.substring(5).trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 递归收集 tree 中的所有文件路径（相对路径）。
+     *
+     * @param repo     仓库对象，用于读取 tree 对象
+     * @param treeOid  tree 对象的 oid
+     * @param prefix   当前路径前缀（如 "" 或 "dir/"）
+     * @param result   结果列表，收集到的文件路径会添加到这里
+     */
+    private void collectTreePaths(Repository repo, String treeOid, String prefix, List<String> result) throws IOException {
+        com.weixiao.repo.ObjectDatabase.RawObject treeRaw = repo.getDatabase().load(treeOid);
+        if (!"tree".equals(treeRaw.getType())) {
+            throw new IOException("expected tree, got " + treeRaw.getType() + ": " + treeOid);
+        }
+
+        List<com.weixiao.obj.TreeEntry> entries = parseTree(treeRaw.getBody());
+        for (com.weixiao.obj.TreeEntry entry : entries) {
+            String path = prefix.isEmpty() ? entry.getName() : prefix + "/" + entry.getName();
+            if ("40000".equals(entry.getMode())) {
+                // 目录，递归处理
+                collectTreePaths(repo, entry.getOid(), path, result);
+            } else {
+                // 文件，添加到结果列表
+                result.add(path);
+            }
+        }
+    }
+
+    /**
+     * 解析 tree body，返回 TreeEntry 列表。
+     * tree 格式：每条 mode + " " + name + "\0" + 20 字节二进制 oid
+     */
+    private List<com.weixiao.obj.TreeEntry> parseTree(byte[] treeBody) throws IOException {
+        List<com.weixiao.obj.TreeEntry> entries = new ArrayList<>();
+        int pos = 0;
+        while (pos < treeBody.length) {
+            // 查找 null 字节（分隔符）
+            int nullPos = pos;
+            while (nullPos < treeBody.length && treeBody[nullPos] != 0) {
+                nullPos++;
+            }
+            if (nullPos >= treeBody.length) {
+                throw new IOException("invalid tree format: missing null byte");
+            }
+
+            // 解析 mode 和 name
+            String header = new String(treeBody, pos, nullPos - pos, java.nio.charset.StandardCharsets.UTF_8);
+            int spacePos = header.indexOf(' ');
+            if (spacePos < 0) {
+                throw new IOException("invalid tree entry header: " + header);
+            }
+            String mode = header.substring(0, spacePos);
+            String name = header.substring(spacePos + 1);
+
+            // 读取 oid（20 字节二进制）
+            int oidStart = nullPos + 1;
+            if (oidStart + 20 > treeBody.length) {
+                throw new IOException("invalid tree format: oid out of bounds");
+            }
+            byte[] oidBytes = new byte[20];
+            System.arraycopy(treeBody, oidStart, oidBytes, 0, 20);
+            String oid = com.weixiao.utils.HexUtils.bytesToHex(oidBytes);
+
+            entries.add(new com.weixiao.obj.TreeEntry(mode, name, oid));
+            pos = oidStart + 20;
+        }
+        return entries;
     }
 
     /**
@@ -344,15 +542,17 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
         com.weixiao.repo.Index.IndexStat getStat() { return stat; }
     }
 
-    /** 一次遍历得到的 Modified、Deleted 与 Untracked 结果。 */
+    /** 一次遍历得到的 Modified、Deleted、Untracked 与 Added 结果。 */
     private static final class StatusResult {
-        private final List<String> modified = new ArrayList<>();
-        private final List<String> deleted = new ArrayList<>();
-        private final List<String> untracked = new ArrayList<>();
+        private final Set<String> modified = new HashSet<>();
+        private final Set<String> deleted = new HashSet<>();
+        private final Set<String> untracked = new HashSet<>();
+        private final Set<String> added = new HashSet<>();
 
-        List<String> getModified() { return modified; }
-        List<String> getDeleted() { return deleted; }
-        List<String> getUntracked() { return untracked; }
+        Set<String> getModified() { return modified; }
+        Set<String> getDeleted() { return deleted; }
+        Set<String> getUntracked() { return untracked; }
+        Set<String> getAdded() { return added; }
     }
 
     /**

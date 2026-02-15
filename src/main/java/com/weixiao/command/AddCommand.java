@@ -1,5 +1,6 @@
 package com.weixiao.command;
 
+import com.weixiao.Jit;
 import com.weixiao.obj.Blob;
 import com.weixiao.repo.Index;
 import com.weixiao.repo.Repository;
@@ -11,7 +12,6 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 
 /**
@@ -23,24 +23,21 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(AddCommand.class);
 
+    @ParentCommand
+    private Jit jit;
+
     /**
      * 要添加的路径（文件或目录），可多个。
      */
     @Parameters(index = "0", arity = "1..*", paramLabel = "PATH", description = "要添加的文件或目录路径（可多个）")
     private List<Path> paths;
 
-    /**
-     * 仓库根路径，默认为当前目录。
-     */
-    @Option(names = {"-C", "--path"}, paramLabel = "DIR", description = "仓库根路径，默认为当前目录")
-    private Path path;
-
     private int exitCode = 0;
 
     @Override
     public void run() {
         exitCode = 0;
-        Path start = path != null ? path.toAbsolutePath().normalize() : Paths.get("").toAbsolutePath().normalize();
+        Path start = jit.getStartPath();
         log.debug("add start path={}", start);
 
         Repository repo = Repository.find(start);

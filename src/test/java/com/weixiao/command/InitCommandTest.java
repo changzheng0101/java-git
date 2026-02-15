@@ -33,7 +33,7 @@ class InitCommandTest {
     @Test
     @DisplayName("通过 jit init 在指定路径执行会创建 .git、.git/objects、.git/refs/heads")
     void init_createsGitStructure(@TempDir Path tempDir) throws Exception {
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "init", tempDir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "init");
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput()).contains("Initialized empty Jit repository");
 
@@ -60,8 +60,8 @@ class InitCommandTest {
     @Test
     @DisplayName("通过 jit init 在同一目录重复执行仍成功，可重复运行")
     void init_idempotent(@TempDir Path tempDir) {
-        int first = JIT.execute("init", tempDir.toString());
-        int second = JIT.execute("init", tempDir.toString());
+        int first = JIT.execute("-C", tempDir.toString(), "init");
+        int second = JIT.execute("-C", tempDir.toString(), "init");
 
         assertThat(first).isEqualTo(0);
         assertThat(second).isEqualTo(0);
@@ -77,7 +77,7 @@ class InitCommandTest {
     @Test
     @DisplayName("通过 jit init 执行时输出包含仓库路径")
     void init_outputContainsRepoPath(@TempDir Path tempDir) {
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "init", tempDir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "init");
         assertThat(result.getOutput()).contains(".git");
         assertThat(result.getOutput()).contains("Initialized empty Jit repository");
     }

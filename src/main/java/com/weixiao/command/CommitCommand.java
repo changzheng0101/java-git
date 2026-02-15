@@ -1,5 +1,6 @@
 package com.weixiao.command;
 
+import com.weixiao.Jit;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
@@ -10,7 +11,6 @@ import picocli.CommandLine.*;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -27,19 +27,19 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(CommitCommand.class);
 
+    @ParentCommand
+    private Jit jit;
+
     @Option(names = {"-m", "--message"}, required = true, description = "提交信息")
     private String message;
 
-    @Parameters(index = "0", arity = "0..1", description = "仓库根路径，默认为当前目录")
-    private Path path;
-
     private int exitCode = 0;
 
-    /** 从 start 路径查找仓库，从 index 构建 tree 并提交，更新 refs/heads/master；index 为空时失败。 */
+    /** 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新 refs/heads/master；index 为空时失败。 */
     @Override
     public void run() {
         exitCode = 0;
-        Path start = path != null ? path.toAbsolutePath().normalize() : Paths.get("").toAbsolutePath().normalize();
+        Path start = jit.getStartPath();
         log.debug("commit start path={}", start);
         Repository repo = Repository.find(start);
         if (repo == null) {

@@ -27,7 +27,7 @@ class CommitCommandTest {
     @Test
     @DisplayName("在非仓库目录执行 commit 失败并提示 not a jit repository")
     void commit_outsideRepo_fails(@TempDir Path dir) {
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "msg", dir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "msg");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("not a jit repository");
     }
@@ -38,8 +38,8 @@ class CommitCommandTest {
     @Test
     @DisplayName("index 为空时 commit 失败并提示 no changes added")
     void commit_emptyIndex_fails(@TempDir Path tempDir) throws Exception {
-        JIT.execute("init", tempDir.toString());
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "msg", tempDir.toString());
+        JIT.execute("-C", tempDir.toString(), "init");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "msg");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("no changes added to commit");
     }
@@ -51,13 +51,13 @@ class CommitCommandTest {
     @Test
     @DisplayName("init 后 add 文件再 commit -m 成功并写入对象与 ref")
     void commit_afterAdd_succeeds(@TempDir Path tempDir) throws Exception {
-        JIT.execute("init", tempDir.toString());
+        JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("hello.txt");
         Files.write(f, "hello".getBytes(StandardCharsets.UTF_8));
-        ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "hello.txt");
+        ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "hello.txt");
         assertThat(addResult.getExitCode()).as("add err: %s", addResult.getErr()).isEqualTo(0);
 
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "first commit", tempDir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first commit");
         assertThat(result.getExitCode()).as("commit out: %s err: %s", result.getOutput(), result.getErr()).isEqualTo(0);
         assertThat(result.getOutput()).contains("first commit");
 
@@ -75,7 +75,7 @@ class CommitCommandTest {
     @Test
     @DisplayName("add 嵌套目录后 commit 支持嵌套 tree 结构")
     void commit_withNestedDirectories_succeeds(@TempDir Path tempDir) throws Exception {
-        JIT.execute("init", tempDir.toString());
+        JIT.execute("-C", tempDir.toString(), "init");
 
         Path dir1 = tempDir.resolve("dir1");
         Files.createDirectories(dir1);
@@ -85,9 +85,9 @@ class CommitCommandTest {
         Files.write(subdir.resolve("file2.txt"), "content2".getBytes(StandardCharsets.UTF_8));
         Files.write(tempDir.resolve("root.txt"), "root content".getBytes(StandardCharsets.UTF_8));
 
-        JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "dir1", "root.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "dir1", "root.txt");
 
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "nested commit", tempDir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "nested commit");
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput()).contains("nested commit");
 
@@ -107,14 +107,14 @@ class CommitCommandTest {
     @Test
     @DisplayName("add 深层嵌套目录后 commit 成功")
     void commit_withDeepNestedDirectories_succeeds(@TempDir Path tempDir) throws Exception {
-        JIT.execute("init", tempDir.toString());
+        JIT.execute("-C", tempDir.toString(), "init");
         Path deepDir = tempDir.resolve("a").resolve("b").resolve("c").resolve("d");
         Files.createDirectories(deepDir);
         Files.write(deepDir.resolve("file.txt"), "deep content".getBytes(StandardCharsets.UTF_8));
 
-        ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "add", "-C", tempDir.toString(), "a");
+        ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a");
         assertThat(addResult.getExitCode()).as("add err: %s", addResult.getErr()).isEqualTo(0);
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "commit", "-m", "deep nested", tempDir.toString());
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "deep nested");
         assertThat(result.getExitCode()).as("commit out: %s err: %s", result.getOutput(), result.getErr()).isEqualTo(0);
 
         Repository repo = Repository.find(tempDir);
