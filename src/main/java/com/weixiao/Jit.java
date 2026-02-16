@@ -2,6 +2,7 @@ package com.weixiao;
 
 import com.weixiao.command.AddCommand;
 import com.weixiao.command.CommitCommand;
+import com.weixiao.command.DiffCommand;
 import com.weixiao.command.InitCommand;
 import com.weixiao.command.StatusCommand;
 import picocli.CommandLine;
@@ -54,7 +55,8 @@ public class Jit implements Runnable {
                 .addSubcommand("init", new InitCommand())
                 .addSubcommand("add", new AddCommand())
                 .addSubcommand("commit", new CommitCommand())
-                .addSubcommand("status", new StatusCommand());
+                .addSubcommand("status", new StatusCommand())
+                .addSubcommand("diff", new DiffCommand());
     }
 
     /**

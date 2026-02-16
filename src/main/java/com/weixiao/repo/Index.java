@@ -249,6 +249,15 @@ public final class Index {
         return new ArrayList<>(entries);
     }
 
+    /** 按路径查找一条暂存条目，不存在返回 null。 */
+    public Entry getEntryForPath(String path) {
+        String normalized = path.replace('\\', '/');
+        for (Entry e : entries) {
+            if (e.getPath().equals(normalized)) return e;
+        }
+        return null;
+    }
+
     /** 暂存区是否为空。 */
     public boolean isEmpty() {
         return entries.isEmpty();
