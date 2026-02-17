@@ -1,13 +1,12 @@
 package com.weixiao.command;
 
 import com.weixiao.Jit;
-import com.weixiao.obj.Blob;
+import com.weixiao.model.DiffSide;
 import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
-import com.weixiao.repo.StatusResult;
+import com.weixiao.model.StatusResult;
 import com.weixiao.utils.DiffUtils;
-import com.weixiao.utils.HexUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
@@ -15,8 +14,6 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /**
@@ -29,6 +26,8 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(DiffCommand.class);
     private static final String DEV_NULL = "/dev/null";
+    public static final String NULL_OID = "0000000";
+    private static final String EMPTY_CONTENT = "";
 
     @ParentCommand
     private Jit jit;
@@ -65,6 +64,8 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
 
     /**
      * 对比 index 与 workspace：对 workspaceModified、workspaceDeleted 中的路径输出 diff。
+     * a为index对应元数据
+     * b为workspace对应元数据
      */
     private void diffIndexWorkspace(Repository repo, StatusResult status) throws IOException {
         List<String> paths = new ArrayList<>();
@@ -74,30 +75,33 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
         for (String path : paths) {
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
             if (indexEntry == null) continue;
-            boolean deleted = status.getWorkspaceDeleted().contains(path);
-            String oldContent = blobContent(repo, indexEntry.getOid());
-            String newContent;
-            String newMode;
-            String newOid;
-            if (deleted) {
-                newContent = "";
-                newMode = null;
-                newOid = null;
+            DiffSide aDiffSide = new DiffSide(
+                    indexEntry.getPath(),
+                    indexEntry.getOid(),
+                    indexEntry.getMode(),
+                    blobContent(repo, indexEntry.getOid()));
+
+            DiffSide bDiffSide;
+            if (status.getWorkspaceDeleted().contains(path)) {
+                bDiffSide = new DiffSide(path, NULL_OID, null, EMPTY_CONTENT);
             } else {
                 Path fullPath = repo.getRoot().resolve(path);
                 byte[] bytes = repo.getWorkspace().readFile(fullPath);
-                newContent = new String(bytes, StandardCharsets.UTF_8);
-                newMode = repo.getWorkspace().getFileMode(fullPath);
-                newOid = computeBlobOid(bytes);
+                bDiffSide = new DiffSide(
+                        path,
+                        Repository.computeBlobOid(bytes),
+                        repo.getWorkspace().getFileMode(fullPath),
+                        new String(bytes, StandardCharsets.UTF_8));
             }
-            printDiff(repo, path, indexEntry.getOid(), indexEntry.getMode(),
-                    newOid, newMode,
-                    oldContent, deleted ? null : newContent, false, deleted);
+
+            printDiff(aDiffSide, bDiffSide);
         }
     }
 
     /**
      * 对比 HEAD 与 index：对 indexAdded、indexModified、indexDeleted 中的路径输出 diff。
+     * a对应的是HEAD中的文件
+     * b对应的是index中的文件
      */
     private void diffHeadIndex(Repository repo, StatusResult status) throws IOException {
         List<String> paths = new ArrayList<>();
@@ -112,14 +116,16 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
             boolean added = status.getIndexAdded().contains(path);
             boolean deleted = status.getIndexDeleted().contains(path);
-            String oldOid = added ? null : headOid;
-            String oldMode = added ? null : headPathToMode.get(path);
-            if (oldMode == null && oldOid != null) oldMode = "100644";
-            String newOid = deleted ? null : (indexEntry != null ? indexEntry.getOid() : null);
-            String newMode = deleted ? null : (indexEntry != null ? indexEntry.getMode() : null);
-            String oldContent = (oldOid != null) ? blobContent(repo, oldOid) : "";
-            String newContent = (newOid != null) ? blobContent(repo, newOid) : "";
-            printDiff(repo, path, oldOid, oldMode, newOid, newMode, oldContent, newContent, added, deleted);
+
+            DiffSide aDiffSide, bDiffSide;
+            aDiffSide = added
+                    ? new DiffSide(path, NULL_OID, null, EMPTY_CONTENT)
+                    : new DiffSide(path, headOid, headPathToMode.get(path), blobContent(repo, headPathToOid.get(path)));
+            bDiffSide = deleted
+                    ? new DiffSide(path, NULL_OID, null, EMPTY_CONTENT)
+                    : new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));
+
+            printDiff(aDiffSide, bDiffSide);
         }
     }
 
@@ -130,73 +136,49 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
         return new String(raw.getBody(), StandardCharsets.UTF_8);
     }
 
-    private static String computeBlobOid(byte[] data) {
-        Blob blob = new Blob(data);
-        byte[] body = blob.toBytes();
-        String header = blob.getType() + " " + body.length + "\0";
-        byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
-        byte[] content = new byte[headerBytes.length + body.length];
-        System.arraycopy(headerBytes, 0, content, 0, headerBytes.length);
-        System.arraycopy(body, 0, content, headerBytes.length, body.length);
-        try {
-            return HexUtils.bytesToHex(MessageDigest.getInstance("SHA-1").digest(content));
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     /**
-     * 输出一个文件的 diff 块。
+     * 输出一个文件的 diff 块。根据 aDiffSide / bDiffSide 是否“有文件”判断新增、删除、修改。
+     * e.g
+     * diff --git a/deleted.txt b/deleted.txt
+     * new file mode 100644
+     * index 0000000..7898192
+     * --- /dev/null
+     * +++ b/deleted.txt
+     * diff_content
      *
-     * @param path      相对路径
-     * @param oldOid    左侧 blob oid（null 表示 /dev/null）
-     * @param oldMode   左侧 mode（展示用，null 表示无）
-     * @param newOid    右侧 blob oid（null 表示 /dev/null）
-     * @param newMode   右侧 mode（展示用，index 侧）
-     * @param oldContent 左侧内容
-     * @param newContent 右侧内容
-     * @param isNewFile  是否为新文件（--- /dev/null）
-     * @param isDeleted  是否为删除（+++ /dev/null）
+     * @param aDiffSide 左侧（a/）：oid、mode、content，无文件时 oid 为 NULL_OID
+     * @param bDiffSide 右侧（b/）：oid、mode、content，无文件时 oid 为 NULL_OID
      */
-    private void printDiff(Repository repo, String path,
-                           String oldOid, String oldMode, String newOid, String newMode,
-                           String oldContent, String newContent,
-                           boolean isNewFile, boolean isDeleted) {
+    private void printDiff(DiffSide aDiffSide, DiffSide bDiffSide) {
+        String path = aDiffSide.getPath();
         System.out.println("diff --git a/" + path + " b/" + path);
-        if (isDeleted) {
-            System.out.println("deleted file mode " + (oldMode != null ? oldMode : "100644"));
-            System.out.println("index " + (oldOid != null ? shortOid(oldOid) : "0000000") + "..0000000");
-            System.out.println("--- a/" + path);
-            System.out.println("+++ " + DEV_NULL);
-            printDiffBody(oldContent, "");
-            return;
-        }
-        if (isNewFile) {
-            System.out.println("new file mode " + (newMode != null ? newMode : "100644"));
-            System.out.println("index 0000000.." + (newOid != null ? shortOid(newOid) : "0000000"));
-            System.out.println("--- " + DEV_NULL);
-            System.out.println("+++ b/" + path);
-            printDiffBody("", newContent != null ? newContent : "");
-            return;
-        }
-        boolean modeChanged = oldMode != null && newMode != null && !oldMode.equals(newMode);
-        if (modeChanged) {
-            System.out.println("old mode " + oldMode);
-            System.out.println("new mode " + newMode);
-        }
-        if (oldOid != null && newOid != null && !oldOid.equals(newOid)) {
-            System.out.println("index " + shortOid(oldOid) + ".." + shortOid(newOid) + " " + (newMode != null ? newMode : "100644"));
-        }
-        System.out.println("--- a/" + path);
-        System.out.println("+++ b/" + path);
-        printDiffBody(oldContent != null ? oldContent : "", newContent != null ? newContent : "");
+
+        printDiffMode(aDiffSide, bDiffSide);
+        System.out.printf("index %s..%s", shortOid(aDiffSide.getOid()), shortOid(bDiffSide.getOid()));
+        System.out.println(Objects.equals(aDiffSide.getMode(), bDiffSide.getMode()) ? aDiffSide.getMode() : "");
+
+        System.out.println("--- " + (aDiffSide.hasFile() ? "a/" + path : DEV_NULL));
+        System.out.println("+++ " + (bDiffSide.hasFile() ? "b/" + path : DEV_NULL));
+        printDiffBody(aDiffSide.getContent(), bDiffSide.getContent());
     }
 
-    private static String shortOid(String oid) {
+    private void printDiffMode(DiffSide aDiffSide, DiffSide bDiffSide) {
+        if (bDiffSide.getMode() == null) {
+            System.out.printf("deleted file mode %s", aDiffSide.getMode());
+        } else if (aDiffSide.getMode() == null) {
+            System.out.printf("new file mode %s", bDiffSide.getMode());
+        } else if (!Objects.equals(aDiffSide.getMode(), bDiffSide.getMode())) {
+            System.out.println("old mode " + aDiffSide.getMode());
+            System.out.println("new mode " + bDiffSide.getMode());
+        }
+    }
+
+    private String shortOid(String oid) {
         return oid != null && oid.length() >= 7 ? oid.substring(0, 7) : oid;
     }
 
-    private static void printDiffBody(String oldContent, String newContent) {
+    private void printDiffBody(String oldContent, String newContent) {
         List<String> a = oldContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(oldContent);
         List<String> b = newContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(newContent);
         List<DiffUtils.Edit> edits = DiffUtils.diff(a, b);

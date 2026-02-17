@@ -80,9 +80,11 @@ class CommitCommandTest {
         Path dir1 = tempDir.resolve("dir1");
         Files.createDirectories(dir1);
         Files.write(dir1.resolve("file1.txt"), "content1".getBytes(StandardCharsets.UTF_8));
+
         Path subdir = dir1.resolve("subdir");
         Files.createDirectories(subdir);
         Files.write(subdir.resolve("file2.txt"), "content2".getBytes(StandardCharsets.UTF_8));
+
         Files.write(tempDir.resolve("root.txt"), "root content".getBytes(StandardCharsets.UTF_8));
 
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "dir1", "root.txt");

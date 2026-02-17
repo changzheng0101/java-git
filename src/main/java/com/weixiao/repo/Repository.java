@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.weixiao.model.StatusResult;
 import com.weixiao.obj.Blob;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.HexUtils;
@@ -386,7 +387,7 @@ public final class Repository {
         return false;
     }
 
-    private static String computeBlobOid(byte[] data) {
+    public static String computeBlobOid(byte[] data) {
         Blob blob = new Blob(data);
         byte[] body = blob.toBytes();
         String header = blob.getType() + " " + body.length + "\0";

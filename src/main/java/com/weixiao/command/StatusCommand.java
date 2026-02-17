@@ -2,7 +2,7 @@ package com.weixiao.command;
 
 import com.weixiao.Jit;
 import com.weixiao.repo.Repository;
-import com.weixiao.repo.StatusResult;
+import com.weixiao.model.StatusResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
