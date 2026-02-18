@@ -15,6 +15,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
 
+import static com.weixiao.command.DiffCommand.CONTEXT_LINES;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("DiffCommand 测试")
@@ -263,5 +264,317 @@ class DiffCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput().trim()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("hunk 分组：单个变更区域显示正确的行号范围")
+    void diff_hunk_singleChange(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        Files.writeString(file, "line1\nline2\nline3\nline4\nline5");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.writeString(file, "line1\nline2\nchanged\nline4\nline5");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该显示 @@ -3,1 +3,1 @@ 或类似格式（第3行变更）
+        assertThat(result.getOutput()).contains("@@ -1,5 +1,5 @@");
+        assertThat(result.getOutput()).contains("-line3");
+        assertThat(result.getOutput()).contains("+changed");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：多个变更区域距离较远时分成多个 hunk")
+    void diff_hunk_multipleDistantChanges(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        // 创建文件，中间有足够的相同行（超过 2*CONTEXT_LINES = 6 行）
+        StringBuilder oldContent = new StringBuilder();
+        StringBuilder newContent = new StringBuilder();
+        for (int i = 1; i <= 5; i++) {
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+        oldContent.append("old1\n");
+        newContent.append("new1\n");
+        for (int i = 7; i <= 14; i++) {  // 8 行相同内容（大于 2*CONTEXT_LINES=6）
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+        oldContent.append("old2\n");
+        newContent.append("new2\n");
+        for (int i = 14; i <= 16; i++) {
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+
+        Files.writeString(file, oldContent.toString());
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.writeString(file, newContent.toString());
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该有两个 hunk（两个 @@ 行）
+        String[] outputLines = result.getOutput().split("\n");
+        long hunkCount = 0;
+        for (String line : outputLines) {
+            if (line.startsWith("@@")) {
+                hunkCount++;
+            }
+        }
+        assertThat(hunkCount).isGreaterThanOrEqualTo(2);
+        assertThat(result.getOutput()).contains("-old1");
+        assertThat(result.getOutput()).contains("+new1");
+        assertThat(result.getOutput()).contains("-old2");
+        assertThat(result.getOutput()).contains("+new2");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：多个变更区域距离较近时合并成一个 hunk")
+    void diff_hunk_multipleCloseChanges(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        // 创建文件，两个变更区域之间只有少量相同行（少于 2*CONTEXT_LINES）
+        StringBuilder oldContent = new StringBuilder();
+        StringBuilder newContent = new StringBuilder();
+        for (int i = 1; i <= 3; i++) {
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+        oldContent.append("old1\n");
+        newContent.append("new1\n");
+        for (int i = 5; i <= 6; i++) {  // 只有 2 行相同内容（小于 6）
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+        oldContent.append("old2\n");
+        newContent.append("new2\n");
+        for (int i = 8; i <= 10; i++) {
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+
+        Files.writeString(file, oldContent.toString());
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.writeString(file, newContent.toString());
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该合并成一个 hunk（只有一个 @@ 行，或者多个但包含两个变更）
+        assertThat(result.getOutput()).contains("-old1");
+        assertThat(result.getOutput()).contains("+new1");
+        assertThat(result.getOutput()).contains("-old2");
+        assertThat(result.getOutput()).contains("+new2");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：当两个hunk之间相同的行数在 CONTEXT_LINES 和  2 * CONTEXT_LINES之间和并成一个")
+    void diff_hunk_count_between_one_and_tow_context_line(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+
+        StringBuilder oldContent = new StringBuilder();
+        StringBuilder newContent = new StringBuilder();
+        StringBuilder shouldContainText = new StringBuilder();
+        for (int i = 0; i < CONTEXT_LINES + 1; i++) {
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+        oldContent.append("old1\n");
+        newContent.append("new1\n");
+        for (int i = CONTEXT_LINES + 2; i < CONTEXT_LINES + 2 + (2 * CONTEXT_LINES - 1); i++) {  // 只有 2 行相同内容（小于 6）
+            shouldContainText.append("line").append(i).append("\n");
+            oldContent.append("line").append(i).append("\n");
+            newContent.append("line").append(i).append("\n");
+        }
+        oldContent.append("old2\n");
+        newContent.append("new2\n");
+
+
+        Files.writeString(file, oldContent.toString());
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.writeString(file, newContent.toString());
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+
+        assertThat(result.getOutput()).containsOnlyOnce("@@ -");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：包含上下文行（前后各3行）")
+    void diff_hunk_includesContext(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        // 创建文件，中间有变更，前后有足够的上下文
+        StringBuilder oldContent = new StringBuilder();
+        StringBuilder newContent = new StringBuilder();
+        for (int i = 1; i <= 5; i++) {
+            oldContent.append("context").append(i).append("\n");
+            newContent.append("context").append(i).append("\n");
+        }
+        oldContent.append("old\n");
+        newContent.append("new\n");
+        for (int i = 7; i <= 10; i++) {
+            oldContent.append("context").append(i).append("\n");
+            newContent.append("context").append(i).append("\n");
+        }
+
+        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该包含上下文行（以空格开头）
+        String[] lines = result.getOutput().split("\n");
+        boolean hasContext = false;
+        boolean hasChange = false;
+        for (String line : lines) {
+            if (line.startsWith(" ") && line.contains("context")) {
+                hasContext = true;
+            }
+            if (line.startsWith("-") && line.contains("old")) {
+                hasChange = true;
+            }
+            if (line.startsWith("+") && line.contains("new")) {
+                hasChange = true;
+            }
+        }
+        assertThat(hasContext).isTrue();
+        assertThat(hasChange).isTrue();
+    }
+
+    @Test
+    @DisplayName("hunk 分组：文件开头变更时正确计算行号")
+    void diff_hunk_changeAtStart(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        Files.write(file, "old1\nline2\nline3\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.write(file, "new1\nline2\nline3\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该显示 @@ -1,1 +1,1 @@ 或类似格式
+        assertThat(result.getOutput()).contains("@@ -1,");
+        assertThat(result.getOutput()).contains("-old1");
+        assertThat(result.getOutput()).contains("+new1");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：文件结尾变更时正确计算行号")
+    void diff_hunk_changeAtEnd(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        Files.write(file, "line1\nline2\nline3\nold4".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.write(file, "line1\nline2\nline3\nnew4".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该显示正确的行号范围
+        assertThat(result.getOutput()).contains("@@ -");
+        assertThat(result.getOutput()).contains("-old4");
+        assertThat(result.getOutput()).contains("+new4");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：只删除行时正确显示")
+    void diff_hunk_deleteOnly(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        Files.write(file, "line1\nline2\ndelete\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.write(file, "line1\nline2\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("-delete");
+        assertThat(result.getOutput()).doesNotContain("+delete");
+        // 应该只显示删除的行，不显示新增
+    }
+
+    @Test
+    @DisplayName("hunk 分组：只新增行时正确显示")
+    void diff_hunk_insertOnly(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        Files.writeString(file, "line1\nline2\nline4\nline5");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.writeString(file, "line1\nline2\ninsert\nline4\nline5");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("+insert");
+        assertThat(result.getOutput()).doesNotContain("-insert");
+        // 应该只显示新增的行，不显示删除
+    }
+
+    @Test
+    @DisplayName("hunk 分组：大文件中间小变更时只显示变更部分")
+    void diff_hunk_largeFileSmallChange(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("large.txt");
+        StringBuilder oldContent = new StringBuilder();
+        StringBuilder newContent = new StringBuilder();
+        // 创建大文件（50行）
+        for (int i = 1; i <= 50; i++) {
+            if (i == 25) {
+                oldContent.append("old25\n");
+                newContent.append("new25\n");
+            } else {
+                oldContent.append("line").append(i).append("\n");
+                newContent.append("line").append(i).append("\n");
+            }
+        }
+
+        Files.writeString(file, oldContent.toString());
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "large.txt");
+        Files.writeString(file, newContent.toString());
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 应该只显示变更部分和上下文，不应该显示所有50行
+        String output = result.getOutput();
+        String[] outputLines = output.split("\n");
+        long lineCount = 0;
+        for (String line : outputLines) {
+            if (line.startsWith(" ") || line.startsWith("-") || line.startsWith("+")) {
+                lineCount++;
+            }
+        }
+        // hunk 应该只包含变更行 + 上下文（最多 3+1+3 = 7 行左右）
+        assertThat(lineCount).isLessThan(15);  // 远小于 50
+        assertThat(output).contains("-old25");
+        assertThat(output).contains("+new25");
+        // 应该包含上下文
+        assertThat(output).contains("line24");
+        assertThat(output).contains("line26");
+    }
+
+    @Test
+    @DisplayName("hunk 分组：行号格式正确（@@ -startA,countA +startB,countB @@）")
+    void diff_hunk_correctLineNumberFormat(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("test.txt");
+        Files.write(file, "a\nb\nc\nd\ne".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
+        Files.write(file, "a\nb\nx\nd\ne".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        // 检查 hunk 头部格式
+        assertThat(result.getOutput()).contains("@@ -");
+        assertThat(result.getOutput()).contains("+");
+        assertThat(result.getOutput()).contains("@@");
+        // 格式应该是 @@ -数字,数字 +数字,数字 @@
+        String[] lines = result.getOutput().split("\n");
+        for (String line : lines) {
+            if (line.startsWith("@@")) {
+                assertThat(line).matches("@@ -\\d+,\\d+ \\+\\d+,\\d+ @@");
+                break;
+            }
+        }
     }
 }

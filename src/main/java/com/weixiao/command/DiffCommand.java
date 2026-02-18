@@ -28,6 +28,8 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
     private static final String DEV_NULL = "/dev/null";
     public static final String NULL_OID = "0000000";
     private static final String EMPTY_CONTENT = "";
+    public static final int CONTEXT_LINES = 3; // Git 默认上下文行数
+
 
     @ParentCommand
     private Jit jit;
@@ -155,7 +157,7 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
         System.out.println("diff --git a/" + path + " b/" + path);
 
         printDiffMode(aDiffSide, bDiffSide);
-        System.out.printf("index %s..%s", shortOid(aDiffSide.getOid()), shortOid(bDiffSide.getOid()));
+        System.out.printf("index %s..%s ", shortOid(aDiffSide.getOid()), shortOid(bDiffSide.getOid()));
         System.out.println(Objects.equals(aDiffSide.getMode(), bDiffSide.getMode()) ? aDiffSide.getMode() : "");
 
         System.out.println("--- " + (aDiffSide.hasFile() ? "a/" + path : DEV_NULL));
@@ -178,20 +180,116 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
         return oid != null && oid.length() >= 7 ? oid.substring(0, 7) : oid;
     }
 
+
+    /**
+     * 一个 diff hunk：包含变更区域及其上下文。
+     */
+    private static final class Hunk {
+        final int startA;  // a 文件起始行号（1-based）
+        final int countA;  // a 文件该 hunk 的行数
+        final int startB;  // b 文件起始行号（1-based）
+        final int countB;  // b 文件该 hunk 的行数
+        final List<DiffUtils.Edit> edits;  // 该 hunk 的编辑列表
+
+        Hunk(int startA, int countA, int startB, int countB, List<DiffUtils.Edit> edits) {
+            this.startA = startA;
+            this.countA = countA;
+            this.startB = startB;
+            this.countB = countB;
+            this.edits = edits;
+        }
+    }
+
     private void printDiffBody(String oldContent, String newContent) {
         List<String> a = oldContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(oldContent);
         List<String> b = newContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(newContent);
         List<DiffUtils.Edit> edits = DiffUtils.diff(a, b);
-        int countA = a.size();
-        int countB = b.size();
-        if (countA == 0 && countB == 0) return;
-        System.out.println("@@ -1," + countA + " +1," + countB + " @@");
-        for (DiffUtils.Edit e : edits) {
-            String prefix = e.getType() == DiffUtils.EditType.DEL ? "-" : (e.getType() == DiffUtils.EditType.INS ? "+" : " ");
-            String line = e.getLine();
-            if (!line.endsWith("\n")) line = line + "\n";
-            System.out.print(prefix + line);
+
+        if (edits.isEmpty() || (a.isEmpty() && b.isEmpty())) return;
+
+        List<Hunk> hunks = groupEditsIntoHunks(edits);
+        for (Hunk hunk : hunks) {
+            System.out.println("@@ -" + hunk.startA + "," + hunk.countA + " +" + hunk.startB + "," + hunk.countB + " @@");
+            for (DiffUtils.Edit e : hunk.edits) {
+                String prefix = e.getType() == DiffUtils.EditType.DEL ? "-" : (e.getType() == DiffUtils.EditType.INS ? "+" : " ");
+                String line = e.getLine();
+                if (!line.endsWith("\n")) line = line + "\n";
+                System.out.print(prefix + line);
+            }
         }
+    }
+
+    /**
+     * 将 Edit 列表分组为多个 hunks
+     * 每个 hunk 包含变更及前后 CONTEXT_LINES 行上下文；若两段变更之间相同行 ≤ 2*CONTEXT_LINES 则合并为一个 hunk。
+     */
+    private List<Hunk> groupEditsIntoHunks(List<DiffUtils.Edit> edits) {
+        List<Hunk> hunks = new ArrayList<>();
+        int offset = 0;
+
+        while (offset < edits.size()) {
+            // 跳过开头的相同行
+            while (offset < edits.size() && edits.get(offset).getType() == DiffUtils.EditType.EQL) {
+                offset++;
+            }
+            if (offset >= edits.size()) break;
+
+            // 向前回退 CONTEXT_LINES 行作为上下文
+            int hunkStart = Math.max(0, offset - CONTEXT_LINES);
+            // startA 和 startB 是从1开始
+            int startA = 1 + countLinesA(edits, 0, hunkStart - 1);
+            int startB = 1 + countLinesB(edits, 0, hunkStart - 1);
+
+            // 从 hunkStart 起向后扩展，直到“最后一段变更”后再出现 CONTEXT_LINES 行相同行；中间若遇到新变更则继续扩展（合并）
+            int hunkEnd = buildHunkEnd(edits, hunkStart);
+            List<DiffUtils.Edit> hunkEdits = new ArrayList<>(edits.subList(hunkStart, hunkEnd + 1));
+            int countA = countLinesA(edits, hunkStart, hunkEnd);
+            int countB = countLinesB(edits, hunkStart, hunkEnd);
+
+            hunks.add(new Hunk(startA, countA, startB, countB, hunkEdits));
+            offset = hunkEnd + 1;
+        }
+        return hunks;
+    }
+
+    /**
+     * 从 start 起扩展 hunk 结尾：遇到变更则继续（合并）；在见过变更后，再出现 CONTEXT_LINES 行相同则结束。
+     */
+    private int buildHunkEnd(List<DiffUtils.Edit> edits, int start) {
+        int counter = -1;  // 未见过变更前不结束
+        int i = start;
+        while (i < edits.size()) {
+            if (edits.get(i).getType() != DiffUtils.EditType.EQL) {
+                counter = 2 * CONTEXT_LINES;
+            } else if (counter >= 0) {
+                counter--;
+                if (counter == 0) return Math.max(0, i - CONTEXT_LINES);
+            }
+            i++;
+        }
+        return edits.size() - 1;
+    }
+
+    private int countLinesA(List<DiffUtils.Edit> edits, int from, int to) {
+        if (from > to) return 0;
+        int n = 0;
+        for (int i = from; i <= to; i++) {
+            if (edits.get(i).getType() == DiffUtils.EditType.DEL || edits.get(i).getType() == DiffUtils.EditType.EQL) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private int countLinesB(List<DiffUtils.Edit> edits, int from, int to) {
+        if (from > to) return 0;
+        int n = 0;
+        for (int i = from; i <= to; i++) {
+            if (edits.get(i).getType() == DiffUtils.EditType.INS || edits.get(i).getType() == DiffUtils.EditType.EQL) {
+                n++;
+            }
+        }
+        return n;
     }
 
     @Override
