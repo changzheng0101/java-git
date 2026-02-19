@@ -255,6 +255,22 @@ class DiffCommandTest {
     }
 
     @Test
+    @DisplayName("--no-color 时输出不含 ANSI 转义码")
+    void diff_noColor_noAnsiCodes(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path file = tempDir.resolve("x.txt");
+        Files.write(file, "a".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "x.txt");
+        Files.write(file, "b".getBytes(StandardCharsets.UTF_8));
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--no-color");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("diff --git");
+        assertThat(result.getOutput()).doesNotContain("\033[");
+        assertThat(result.getOutput()).doesNotContain("\u001B[");
+    }
+
+    @Test
     @DisplayName("无变更时 diff 无输出")
     void diff_noChanges_emptyOutput(@TempDir Path tempDir) throws Exception {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "init");

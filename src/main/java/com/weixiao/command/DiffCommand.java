@@ -6,6 +6,7 @@ import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 import com.weixiao.model.StatusResult;
+import com.weixiao.utils.DiffColor;
 import com.weixiao.utils.DiffUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +38,16 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
     @Option(names = {"--cached", "--staged"}, description = "对比 index 与 HEAD（暂存区与最近提交）")
     private boolean cached;
 
+    @Option(names = {"--no-color"}, description = "关闭彩色输出")
+    private boolean noColor;
+
     private int exitCode = 0;
+
+    /** 是否使用颜色（与 Git 一致：默认在 TTY 下开启，--no-color 关闭） */
+    private boolean useColor() {
+        if (noColor) return false;
+        return System.console() != null;
+    }
 
     @Override
     public void run() {
@@ -141,38 +151,37 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
 
     /**
      * 输出一个文件的 diff 块。根据 aDiffSide / bDiffSide 是否“有文件”判断新增、删除、修改。
-     * e.g
-     * diff --git a/deleted.txt b/deleted.txt
-     * new file mode 100644
-     * index 0000000..7898192
-     * --- /dev/null
-     * +++ b/deleted.txt
-     * diff_content
-     *
-     * @param aDiffSide 左侧（a/）：oid、mode、content，无文件时 oid 为 NULL_OID
-     * @param bDiffSide 右侧（b/）：oid、mode、content，无文件时 oid 为 NULL_OID
+     * 与 Git 一致：meta 加粗、hunk 头青色、删除红、新增绿。
      */
     private void printDiff(DiffSide aDiffSide, DiffSide bDiffSide) {
         String path = aDiffSide.getPath();
-        System.out.println("diff --git a/" + path + " b/" + path);
+        boolean color = useColor();
 
-        printDiffMode(aDiffSide, bDiffSide);
-        System.out.printf("index %s..%s ", shortOid(aDiffSide.getOid()), shortOid(bDiffSide.getOid()));
-        System.out.println(Objects.equals(aDiffSide.getMode(), bDiffSide.getMode()) ? aDiffSide.getMode() : "");
+        String metaLine = "diff --git a/" + path + " b/" + path;
+        System.out.println(color ? DiffColor.bold(metaLine) : metaLine);
 
-        System.out.println("--- " + (aDiffSide.hasFile() ? "a/" + path : DEV_NULL));
-        System.out.println("+++ " + (bDiffSide.hasFile() ? "b/" + path : DEV_NULL));
-        printDiffBody(aDiffSide.getContent(), bDiffSide.getContent());
+        printDiffMode(aDiffSide, bDiffSide, color);
+        String modeSuffix = Objects.equals(aDiffSide.getMode(), bDiffSide.getMode()) ? (aDiffSide.getMode() != null ? aDiffSide.getMode() : "") : "";
+        String indexLine = "index " + shortOid(aDiffSide.getOid()) + ".." + shortOid(bDiffSide.getOid()) + (modeSuffix.isEmpty() ? "" : " " + modeSuffix);
+        System.out.println(color ? DiffColor.bold(indexLine) : indexLine);
+
+        String minusLine = "--- " + (aDiffSide.hasFile() ? "a/" + path : DEV_NULL);
+        String plusLine = "+++ " + (bDiffSide.hasFile() ? "b/" + path : DEV_NULL);
+        System.out.println(color ? DiffColor.bold(minusLine) : minusLine);
+        System.out.println(color ? DiffColor.bold(plusLine) : plusLine);
+        printDiffBody(aDiffSide.getContent(), bDiffSide.getContent(), color);
     }
 
-    private void printDiffMode(DiffSide aDiffSide, DiffSide bDiffSide) {
+    private void printDiffMode(DiffSide aDiffSide, DiffSide bDiffSide, boolean color) {
         if (bDiffSide.getMode() == null) {
-            System.out.printf("deleted file mode %s", aDiffSide.getMode());
+            String s = "deleted file mode " + aDiffSide.getMode();
+            System.out.println(color ? DiffColor.bold(s) : s);
         } else if (aDiffSide.getMode() == null) {
-            System.out.printf("new file mode %s", bDiffSide.getMode());
+            String s = "new file mode " + bDiffSide.getMode();
+            System.out.println(color ? DiffColor.bold(s) : s);
         } else if (!Objects.equals(aDiffSide.getMode(), bDiffSide.getMode())) {
-            System.out.println("old mode " + aDiffSide.getMode());
-            System.out.println("new mode " + bDiffSide.getMode());
+            System.out.println(color ? DiffColor.bold("old mode " + aDiffSide.getMode()) : "old mode " + aDiffSide.getMode());
+            System.out.println(color ? DiffColor.bold("new mode " + bDiffSide.getMode()) : "new mode " + bDiffSide.getMode());
         }
     }
 
@@ -200,7 +209,7 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
         }
     }
 
-    private void printDiffBody(String oldContent, String newContent) {
+    private void printDiffBody(String oldContent, String newContent, boolean color) {
         List<String> a = oldContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(oldContent);
         List<String> b = newContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(newContent);
         List<DiffUtils.Edit> edits = DiffUtils.diff(a, b);
@@ -209,12 +218,24 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
 
         List<Hunk> hunks = groupEditsIntoHunks(edits);
         for (Hunk hunk : hunks) {
-            System.out.println("@@ -" + hunk.startA + "," + hunk.countA + " +" + hunk.startB + "," + hunk.countB + " @@");
+            String hunkHeader = "@@ -" + hunk.startA + "," + hunk.countA + " +" + hunk.startB + "," + hunk.countB + " @@";
+            System.out.println(color ? DiffColor.cyan(hunkHeader) : hunkHeader);
             for (DiffUtils.Edit e : hunk.edits) {
                 String prefix = e.getType() == DiffUtils.EditType.DEL ? "-" : (e.getType() == DiffUtils.EditType.INS ? "+" : " ");
                 String line = e.getLine();
                 if (!line.endsWith("\n")) line = line + "\n";
-                System.out.print(prefix + line);
+                String fullLine = prefix + line;
+                if (color) {
+                    if (e.getType() == DiffUtils.EditType.DEL) {
+                        System.out.print(DiffColor.deletion(fullLine));
+                    } else if (e.getType() == DiffUtils.EditType.INS) {
+                        System.out.print(DiffColor.insertion(fullLine));
+                    } else {
+                        System.out.print(DiffColor.context(fullLine));
+                    }
+                } else {
+                    System.out.print(fullLine);
+                }
             }
         }
     }
