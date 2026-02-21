@@ -59,6 +59,7 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
             exitCode = 1;
             return;
         }
+
         try {
             repo.getIndex().load();
             StatusResult status = repo.getStatus();
@@ -67,7 +68,7 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
             } else {
                 diffIndexWorkspace(repo, status);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("diff failed", e);
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;

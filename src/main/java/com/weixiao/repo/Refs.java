@@ -52,6 +52,7 @@ public final class Refs {
 
     /**
      * 将 refs/heads/master 更新为给定 commit oid。
+     * todo 这里改为根据当前的分支进行更新
      */
     public void updateMaster(String oid) throws IOException {
         Path refPath = gitDir.resolve(REFS_HEADS_MASTER);

@@ -52,7 +52,7 @@ public class InitCommand implements Runnable, IExitCodeGenerator {
                 log.debug("created dir {}", sub);
             }
             Path headFile = gitPath.resolve("HEAD");
-            Files.write(headFile, HEAD_REF.getBytes(StandardCharsets.UTF_8));
+            Files.writeString(headFile, HEAD_REF);
             log.debug("wrote HEAD -> {}", HEAD_REF);
         } catch (IOException e) {
             log.error("init failed", e);

@@ -43,7 +43,9 @@ public final class Index {
         this.gitDir = gitDir.toAbsolutePath().normalize();
     }
 
-    /** index 一条 entry 的 stat 属性（ctime/mtime/dev/ino/uid/gid），与 Git index 格式一致。 */
+    /**
+     * index 一条 entry 的 stat 属性（ctime/mtime/dev/ino/uid/gid），与 Git index 格式一致。
+     */
     @Value
     public static class IndexStat {
         int ctimeSec;
@@ -56,16 +58,24 @@ public final class Index {
         int gid;
     }
 
-    /** 暂存区一条记录：相对路径、mode、blob oid、文件大小、stat 属性。 */
+    /**
+     * 暂存区一条记录：相对路径、mode、blob oid、文件大小、stat 属性。
+     */
     @Value
     public static class Entry {
-        /** 相对仓库根的路径，使用 / 分隔（如 "a/b.txt"）。 */
+        /**
+         * 相对仓库根的路径，使用 / 分隔（如 "a/b.txt"）。
+         */
         String path;
         String mode;
         String oid;
-        /** 文件大小（字节），与 Git index 中 file size 一致。 */
+        /**
+         * 文件大小（字节），与 Git index 中 file size 一致。
+         */
         int size;
-        /** stat 属性（ctime/mtime/dev/ino/uid/gid），可为 null（加载旧格式时用 0 填充）。 */
+        /**
+         * stat 属性（ctime/mtime/dev/ino/uid/gid），可为 null（加载旧格式时用 0 填充）。
+         */
         IndexStat stat;
     }
 
@@ -244,12 +254,16 @@ public final class Index {
         log.debug("remove entry path={}", normalized);
     }
 
-    /** 返回当前所有暂存条目（只读）。 */
+    /**
+     * 返回当前所有暂存条目（只读）。
+     */
     public List<Entry> getEntries() {
         return new ArrayList<>(entries);
     }
 
-    /** 按路径查找一条暂存条目，不存在返回 null。 */
+    /**
+     * 按路径查找一条暂存条目，不存在返回 null。
+     */
     public Entry getEntryForPath(String path) {
         String normalized = path.replace('\\', '/');
         for (Entry e : entries) {
@@ -258,7 +272,9 @@ public final class Index {
         return null;
     }
 
-    /** 暂存区是否为空。 */
+    /**
+     * 暂存区是否为空。
+     */
     public boolean isEmpty() {
         return entries.isEmpty();
     }

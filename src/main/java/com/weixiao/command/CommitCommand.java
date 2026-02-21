@@ -4,6 +4,7 @@ import com.weixiao.Jit;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
+import com.weixiao.repo.Index;
 import com.weixiao.repo.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +36,9 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
 
     private int exitCode = 0;
 
-    /** 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新 refs/heads/master；index 为空时失败。 */
+    /**
+     * 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新 refs/heads/master；index 为空时失败。
+     */
     @Override
     public void run() {
         exitCode = 0;
@@ -65,9 +68,7 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
             String parentOid = repo.getRefs().readHead();
             log.debug("parent oid={}", parentOid);
             String author = formatAuthor();
-            Commit commit = parentOid == null
-                    ? Commit.first(treeOid, author, message)
-                    : new Commit(treeOid, parentOid, author, author, message);
+            Commit commit = new Commit(treeOid, parentOid, author, author, message);
             String commitOid = repo.getDatabase().store(commit);
             log.debug("stored commit oid={}", commitOid);
 
@@ -86,31 +87,26 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
      * prefix 为当前目录相对仓库根的路径（如 "" 或 "dir/"），只处理 path.startsWith(prefix) 的条目。
      * 返回当前目录的 tree oid。
      */
-    private String buildTreeFromIndex(Repository repo, List<com.weixiao.repo.Index.Entry> indexEntries, String prefix) throws IOException {
+    private String buildTreeFromIndex(Repository repo, List<Index.Entry> indexEntries, String prefix) throws IOException {
         List<TreeEntry> entries = new ArrayList<>();
         String prefixSlash = prefix.isEmpty() ? "" : prefix;
 
-        // add for normal file
-        for (com.weixiao.repo.Index.Entry e : indexEntries) {
+        Set<String> dirNames = new HashSet<>();
+        for (Index.Entry e : indexEntries) {
             if (!e.getPath().startsWith(prefixSlash)) continue;
             String local = prefixSlash.isEmpty() ? e.getPath() : e.getPath().substring(prefixSlash.length());
             if (local.isEmpty()) continue;
             if (!local.contains("/")) {
+                // normal file
                 entries.add(new TreeEntry(e.getMode(), local, e.getOid()));
                 log.debug("tree entry blob {} mode={} oid={}", local, e.getMode(), e.getOid());
-            }
-        }
-
-        // add for directory
-        Set<String> dirNames = new HashSet<>();
-        for (com.weixiao.repo.Index.Entry e : indexEntries) {
-            if (!e.getPath().startsWith(prefixSlash)) continue;
-            String local = prefixSlash.isEmpty() ? e.getPath() : e.getPath().substring(prefixSlash.length());
-            if (local.contains("/")) {
+            } else {
+                // directory
                 dirNames.add(local.substring(0, local.indexOf('/')));
             }
         }
-        for (String dirName : dirNames.stream().sorted().collect(Collectors.toList())) {
+
+        for (String dirName : dirNames) {
             String subPrefix = prefixSlash + dirName + "/";
             String childTreeOid = buildTreeFromIndex(repo, indexEntries, subPrefix);
             entries.add(new TreeEntry("40000", dirName, childTreeOid));
@@ -123,14 +119,18 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
         return treeOid;
     }
 
-    /** 生成当前作者字符串，格式：Name &lt;name@local&gt; timestamp +0000。 */
+    /**
+     * 生成当前作者字符串，格式：Name &lt;name@local&gt; timestamp +0000。
+     */
     private static String formatAuthor() {
         String user = System.getProperty("user.name", "user");
         long sec = System.currentTimeMillis() / 1000;
         return user + " <" + user + "@local> " + sec + " +0000";
     }
 
-    /** 返回本命令的退出码（0 成功，1 失败）。 */
+    /**
+     * 返回本命令的退出码（0 成功，1 失败）。
+     */
     @Override
     public int getExitCode() {
         return exitCode;

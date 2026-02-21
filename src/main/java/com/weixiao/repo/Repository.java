@@ -4,6 +4,7 @@ import com.weixiao.model.StatusResult;
 import com.weixiao.obj.Blob;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.HexUtils;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,17 +20,36 @@ import java.util.*;
  * 仓库：定位 .git 目录，提供 ObjectDatabase、Refs、Workspace。
  * 代表整个git仓库的一个抽象
  */
+@Getter
 public final class Repository {
 
     private static final Logger log = LoggerFactory.getLogger(Repository.class);
 
     private static final String GIT_DIR = ".git";
 
-    private final Path root;   // 工作区根
-    private final Path gitDir; // .git 目录
+    /**
+     * 工作区根目录（即仓库根）
+     */
+    private final Path root;
+    /**
+     * .git 目录路径
+     */
+    private final Path gitDir;
+    /**
+     * 对象库，用于 store/load blob、tree、commit
+     */
     private final ObjectDatabase database;
+    /**
+     * 引用，用于 readHead、updateMaster
+     */
     private final Refs refs;
+    /**
+     * 工作区，用于 listFiles、readFile
+     */
     private final Workspace workspace;
+    /**
+     * 暂存区，用于 add/commit
+     */
     private final Index index;
 
     /**
@@ -52,8 +72,8 @@ public final class Repository {
         Path root = Paths.get("/").normalize();
         log.debug("find repo start={}", current);
         while (current != null && !current.equals(root)) {
-            if (java.nio.file.Files.exists(current.resolve(GIT_DIR))
-                    && java.nio.file.Files.isDirectory(current.resolve(GIT_DIR))) {
+            if (Files.exists(current.resolve(GIT_DIR))
+                    && Files.isDirectory(current.resolve(GIT_DIR))) {
                 log.info("found repo at {}", current);
                 return new Repository(current);
             }
@@ -61,48 +81,6 @@ public final class Repository {
         }
         log.debug("no repo found");
         return null;
-    }
-
-    /**
-     * 工作区根目录（即仓库根）。
-     */
-    public Path getRoot() {
-        return root;
-    }
-
-    /**
-     * .git 目录路径。
-     */
-    public Path getGitDir() {
-        return gitDir;
-    }
-
-    /**
-     * 对象库，用于 store/load blob、tree、commit。
-     */
-    public ObjectDatabase getDatabase() {
-        return database;
-    }
-
-    /**
-     * 引用，用于 readHead、updateMaster。
-     */
-    public Refs getRefs() {
-        return refs;
-    }
-
-    /**
-     * 工作区，用于 listFiles、readFile。
-     */
-    public Workspace getWorkspace() {
-        return workspace;
-    }
-
-    /**
-     * 暂存区，用于 add/commit。
-     */
-    public Index getIndex() {
-        return index;
     }
 
     /**
@@ -209,7 +187,7 @@ public final class Repository {
     }
 
     private void collectWorkspaceFiles(Path dir, String prefix, Set<String> trackedPaths,
-                                      List<WorkspaceFile> result) throws IOException {
+                                       List<WorkspaceFile> result) throws IOException {
         List<Path> entries = workspace.listEntries(dir);
         entries.sort(Comparator.comparing(a -> a.getFileName().toString()));
 
@@ -416,7 +394,7 @@ public final class Repository {
         }
 
         WorkspaceFile(String relativePath, Path absolutePath, boolean directory,
-                     Long fileSize, String mode, Index.IndexStat stat) {
+                      Long fileSize, String mode, Index.IndexStat stat) {
             this.relativePath = relativePath;
             this.absolutePath = absolutePath;
             this.directory = directory;
@@ -425,11 +403,28 @@ public final class Repository {
             this.stat = stat;
         }
 
-        String getRelativePath() { return relativePath; }
-        Path getAbsolutePath() { return absolutePath; }
-        boolean isDirectory() { return directory; }
-        long getSize() { return fileSize != null ? fileSize : 0L; }
-        String getMode() { return mode; }
-        Index.IndexStat getStat() { return stat; }
+        String getRelativePath() {
+            return relativePath;
+        }
+
+        Path getAbsolutePath() {
+            return absolutePath;
+        }
+
+        boolean isDirectory() {
+            return directory;
+        }
+
+        long getSize() {
+            return fileSize != null ? fileSize : 0L;
+        }
+
+        String getMode() {
+            return mode;
+        }
+
+        Index.IndexStat getStat() {
+            return stat;
+        }
     }
 }

@@ -10,13 +10,21 @@ import lombok.experimental.UtilityClass;
 public class DiffColor {
 
     private static final String RESET = "\033[0m";
-    /** 加粗（用于 meta：diff --git、index、---/+++） */
+    /**
+     * 加粗（用于 meta：diff --git、index、---/+++）
+     */
     private static final String BOLD = "\033[1m";
-    /** 红色（删除行） */
+    /**
+     * 红色（删除行）
+     */
     private static final String RED = "\033[31m";
-    /** 绿色（新增行） */
+    /**
+     * 绿色（新增行）
+     */
     private static final String GREEN = "\033[32m";
-    /** 青色（hunk 头 @@ -1,5 +1,6 @@） */
+    /**
+     * 青色（hunk 头 @@ -1,5 +1,6 @@）
+     */
     private static final String CYAN = "\033[36m";
 
     public static String reset() {
