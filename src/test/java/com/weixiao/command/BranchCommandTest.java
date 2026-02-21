@@ -1,0 +1,160 @@
+package com.weixiao.command;
+
+import com.weixiao.Jit;
+import com.weixiao.JitTestUtil;
+import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.repo.Refs;
+import com.weixiao.repo.Repository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import picocli.CommandLine;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DisplayName("BranchCommand 测试")
+class BranchCommandTest {
+
+    private static final CommandLine JIT = Jit.createCommandLine();
+
+    /** 在给定目录创建仓库并做一次 commit，便于 branch 测试。 */
+    private static void initRepoWithOneCommit(Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "x".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
+    }
+
+    @Test
+    @DisplayName("非仓库目录执行 branch 失败")
+    void branch_outsideRepo_fails(@TempDir Path dir) {
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "branch", "foo");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a jit repository");
+    }
+
+    @Test
+    @DisplayName("无 commit 时 branch 失败并提示 Not a valid object name")
+    void branch_noCommit_fails(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("Not a valid object name");
+    }
+
+    @Test
+    @DisplayName("合法分支名：简单名创建成功")
+    void branch_validSimpleName_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        Repository repo = Repository.find(tempDir);
+        assertThat(repo.getRefs().readRef(Refs.REFS_HEADS + "foo")).isNotNull();
+        assertThat(repo.getRefs().readRef(Refs.REFS_HEADS + "foo")).isEqualTo(repo.getRefs().readHead());
+    }
+
+    @Test
+    @DisplayName("合法分支名：含连字符创建成功")
+    void branch_validWithHyphen_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "feature-foo");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(Repository.find(tempDir).getRefs().branchExists("feature-foo")).isTrue();
+    }
+
+    @Test
+    @DisplayName("合法分支名：含下划线创建成功")
+    void branch_validWithUnderscore_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "feature_foo");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(Repository.find(tempDir).getRefs().branchExists("feature_foo")).isTrue();
+    }
+
+    @Test
+    @DisplayName("合法分支名：含斜杠（如 feature/bar）创建成功")
+    void branch_validWithSlash_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "feature/bar");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(Repository.find(tempDir).getRefs().readRef(Refs.REFS_HEADS + "feature/bar")).isNotNull();
+    }
+
+    @Test
+    @DisplayName("非法分支名：空字符串失败")
+    void branch_invalidEmpty_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name");
+    }
+
+    @Test
+    @DisplayName("非法分支名：含 .. 失败")
+    void branch_invalidDoubleDot_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "a..b");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name").contains("..");
+    }
+
+    @Test
+    @DisplayName("非法分支名：单独 @ 失败")
+    void branch_invalidAtOnly_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "@");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name");
+    }
+
+    @Test
+    @DisplayName("非法分支名：以 / 开头失败")
+    void branch_invalidLeadingSlash_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "/foo");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name");
+    }
+
+    @Test
+    @DisplayName("非法分支名：以 / 结尾失败")
+    void branch_invalidTrailingSlash_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo/");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name");
+    }
+
+    @Test
+    @DisplayName("非法分支名：段以 .lock 结尾失败")
+    void branch_invalidSegmentEndsWithLock_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo.lock");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name").contains("lock");
+    }
+
+    @Test
+    @DisplayName("非法分支名：段以 . 开头失败")
+    void branch_invalidSegmentStartsWithDot_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", ".foo");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a valid branch name");
+    }
+
+    @Test
+    @DisplayName("分支已存在时失败")
+    void branch_alreadyExists_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dup");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dup");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("already exists");
+    }
+}
