@@ -3,6 +3,7 @@ package com.weixiao.obj;
 import com.weixiao.utils.HexUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -56,6 +57,13 @@ public final class Tree implements GitObject {
             }
         }
         return -1;
+    }
+
+    /**
+     * 返回当前 tree 下的条目列表（只读，按 name 排序）。
+     */
+    public List<TreeEntry> getEntries() {
+        return Collections.unmodifiableList(entries);
     }
 
     /**
