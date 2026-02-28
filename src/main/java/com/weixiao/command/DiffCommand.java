@@ -144,9 +144,9 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
 
     private static String blobContent(Repository repo, String oid) throws IOException {
         if (oid == null) return "";
-        ObjectDatabase.RawObject raw = repo.getDatabase().load(oid);
+        var raw = repo.getDatabase().load(oid);
         if (!"blob".equals(raw.getType())) return "";
-        return new String(raw.getBody(), StandardCharsets.UTF_8);
+        return new String(raw.toBytes(), StandardCharsets.UTF_8);
     }
 
 

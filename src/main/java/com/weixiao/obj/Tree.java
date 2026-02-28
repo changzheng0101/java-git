@@ -23,6 +23,42 @@ public final class Tree implements GitObject {
     }
 
     /**
+     * 从对象体字节解析出 tree，每条：mode + " " + name + "\\0" + 20 字节二进制 oid。
+     */
+    public static Tree fromBytes(byte[] body) {
+        List<TreeEntry> entries = new ArrayList<>();
+        int pos = 0;
+        while (pos < body.length) {
+            int nul = indexOf(body, (byte) 0, pos);
+            if (nul < 0 || nul + 1 + 20 > body.length) {
+                throw new IllegalArgumentException("invalid tree body: truncated entry");
+            }
+            String header = new String(body, pos, nul - pos, java.nio.charset.StandardCharsets.UTF_8);
+            int space = header.indexOf(' ');
+            if (space < 0) {
+                throw new IllegalArgumentException("invalid tree entry header: " + header);
+            }
+            String mode = header.substring(0, space);
+            String name = header.substring(space + 1);
+            byte[] oidBytes = new byte[20];
+            System.arraycopy(body, nul + 1, oidBytes, 0, 20);
+            String oid = HexUtils.bytesToHex(oidBytes);
+            entries.add(new TreeEntry(mode, name, oid));
+            pos = nul + 1 + 20;
+        }
+        return new Tree(entries);
+    }
+
+    private static int indexOf(byte[] a, byte b, int from) {
+        for (int i = from; i < a.length; i++) {
+            if (a[i] == b) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
      * 返回对象类型 "tree"。
      */
     @Override

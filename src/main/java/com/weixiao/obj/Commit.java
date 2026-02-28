@@ -1,11 +1,14 @@
 package com.weixiao.obj;
 
+import lombok.Getter;
+
 import java.nio.charset.StandardCharsets;
 
 /**
  * Git commit 对象：tree、author、committer、message。
  * 序列化格式与 Git 一致：tree &lt;oid&gt;\nauthor ...\ncommitter ...\n\nmessage
  */
+@Getter
 public final class Commit implements GitObject {
 
     private final String treeOid;
@@ -30,6 +33,40 @@ public final class Commit implements GitObject {
      */
     public static Commit first(String treeOid, String author, String message) {
         return new Commit(treeOid, null, author, author, message);
+    }
+
+    /**
+     * 从对象体字节解析出 commit，格式：tree &lt;oid&gt;\n[parent &lt;oid&gt;\n]author ...\ncommitter ...\n\nmessage。
+     */
+    public static Commit fromBytes(byte[] body) {
+        String raw = new String(body, StandardCharsets.UTF_8);
+        int headerEnd = raw.indexOf("\n\n");
+        if (headerEnd < 0) {
+            throw new IllegalArgumentException("invalid commit: missing header/message separator");
+        }
+        String header = raw.substring(0, headerEnd);
+        String message = raw.substring(headerEnd + 2);
+        String treeOid = null;
+        String parentOid = null;
+        String author = null;
+        String committer = null;
+        for (String line : header.split("\n")) {
+            if (line.startsWith("tree ")) {
+                treeOid = line.substring(5).trim();
+            } else if (line.startsWith("parent ")) {
+                if (parentOid == null) {
+                    parentOid = line.substring(7).trim();
+                }
+            } else if (line.startsWith("author ")) {
+                author = line.substring(7);
+            } else if (line.startsWith("committer ")) {
+                committer = line.substring(10);
+            }
+        }
+        if (treeOid == null || author == null || committer == null) {
+            throw new IllegalArgumentException("invalid commit: missing tree/author/committer");
+        }
+        return new Commit(treeOid, parentOid, author, committer, message);
     }
 
     /**

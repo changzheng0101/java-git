@@ -16,6 +16,7 @@ import java.util.stream.Stream;
 
 /**
  * 工作区：列出并读取工作目录中的文件（排除 .、..、.git）。
+ * 可以直接和文件系统进行交互
  */
 public final class Workspace {
 

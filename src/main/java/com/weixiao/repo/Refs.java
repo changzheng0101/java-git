@@ -18,7 +18,9 @@ public final class Refs {
     private static final Logger log = LoggerFactory.getLogger(Refs.class);
 
     private static final String HEAD = "HEAD";
-    /** refs/heads/ 前缀，分支完整 ref 为 refs/heads/&lt;name&gt; */
+    /**
+     * refs/heads/ 前缀，分支完整 ref 为 refs/heads/&lt;name&gt;
+     */
     public static final String REFS_HEADS = "refs/heads/";
     private static final String REFS_HEADS_MASTER = REFS_HEADS + "master";
     private static final Pattern HEAD_REF = Pattern.compile("ref:\\s*(.+)");
@@ -50,6 +52,7 @@ public final class Refs {
 
     /**
      * 读取指定 ref 指向的 oid，不存在或无法读取时返回 null。
+     * ref为branch name
      */
     public String readRef(String ref) throws IOException {
         if (ref == null || ref.isEmpty()) return null;

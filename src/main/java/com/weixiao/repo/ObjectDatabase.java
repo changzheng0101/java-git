@@ -1,6 +1,9 @@
 package com.weixiao.repo;
 
+import com.weixiao.obj.Blob;
+import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
+import com.weixiao.obj.Tree;
 import com.weixiao.utils.HexUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,13 +16,17 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-import lombok.Value;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Stream;
 
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
 /**
  * .git/objects 存储：按 oid 写入/读取对象，格式与 Git 一致（type size\0body，zlib 压缩）。
+ * 可以直接访问文件系统
  */
 public final class ObjectDatabase {
 
@@ -72,9 +79,9 @@ public final class ObjectDatabase {
     }
 
     /**
-     * 读取对象，返回 (type, body)。
+     * 读取对象，按 obj 文件类型解析为 commit、tree 或 blob 并返回。
      */
-    public RawObject load(String oid) throws IOException {
+    public GitObject load(String oid) throws IOException {
         Path p = objectPath(oid);
         log.debug("load oid={} path={}", oid, p);
         if (!Files.exists(p)) {
@@ -83,14 +90,34 @@ public final class ObjectDatabase {
         byte[] compressed = Files.readAllBytes(p);
         byte[] content = inflate(compressed);
         int nul = indexOf(content, (byte) 0);
-        if (nul < 0) throw new IOException("invalid object: " + oid);
+        if (nul < 0) {
+            throw new IOException("invalid object: " + oid);
+        }
         String typeSize = new String(content, 0, nul, java.nio.charset.StandardCharsets.UTF_8);
         int space = typeSize.indexOf(' ');
-        if (space < 0) throw new IOException("invalid object header: " + oid);
+        if (space < 0) {
+            throw new IOException("invalid object header: " + oid);
+        }
         String type = typeSize.substring(0, space);
         byte[] body = new byte[content.length - nul - 1];
         System.arraycopy(content, nul + 1, body, 0, body.length);
-        return new RawObject(type, body);
+        return parseObject(type, body);
+    }
+
+    /**
+     * 根据类型将 body 解析为 Commit、Tree 或 Blob。
+     */
+    private static GitObject parseObject(String type, byte[] body) throws IOException {
+        switch (type) {
+            case "commit":
+                return Commit.fromBytes(body);
+            case "tree":
+                return Tree.fromBytes(body);
+            case "blob":
+                return new Blob(body);
+            default:
+                throw new IOException("unknown object type: " + type);
+        }
     }
 
     /**
@@ -98,6 +125,60 @@ public final class ObjectDatabase {
      */
     public boolean exists(String oid) {
         return Files.exists(objectPath(oid));
+    }
+
+    /**
+     * 按前缀匹配对象 oid，返回所有以 prefix 开头的 40 位 hex oid 列表（排序）。
+     * 用于短 SHA1 解析：仅当候选唯一时可解析。
+     */
+    public List<String> prefixMatch(String prefix) throws IOException {
+        if (prefix == null || prefix.isEmpty() || prefix.length() > 40) {
+            return Collections.emptyList();
+        }
+        if (!prefix.matches("[0-9a-f]+")) {
+            return Collections.emptyList();
+        }
+        if (!Files.isDirectory(gitDir)) {
+            return Collections.emptyList();
+        }
+        List<String> oids = new ArrayList<>();
+        if (prefix.length() == 1) {
+            try (Stream<Path> subdirs = Files.list(gitDir)) {
+                subdirs.filter(p -> Files.isDirectory(p))
+                    .filter(p -> p.getFileName().toString().startsWith(prefix))
+                    .forEach(subdir -> collectOidsInDir(oids, subdir, ""));
+            }
+        } else {
+            Path subdir = gitDir.resolve(prefix.substring(0, 2));
+            if (Files.isDirectory(subdir)) {
+                String suffix = prefix.length() > 2 ? prefix.substring(2) : "";
+                collectOidsInDir(oids, subdir, suffix);
+            }
+        }
+        Collections.sort(oids);
+        return oids;
+    }
+
+    private void collectOidsInDir(List<String> oids, Path subdir, String filenamePrefix) {
+        try (Stream<Path> files = Files.list(subdir)) {
+            files.filter(p -> Files.isRegularFile(p))
+                .map(p -> p.getFileName().toString())
+                .filter(name -> name.startsWith(filenamePrefix))
+                .map(name -> subdir.getFileName().toString() + name)
+                .forEach(oids::add);
+        } catch (IOException e) {
+            // 忽略单目录读取失败
+        }
+    }
+
+    /**
+     * 返回 oid 的短形式（至少 7 位），用于歧义提示等。
+     */
+    public static String shortOid(String oid) {
+        if (oid == null || oid.length() < 7) {
+            return oid != null ? oid : "";
+        }
+        return oid.substring(0, 7);
     }
 
     /**
@@ -147,16 +228,11 @@ public final class ObjectDatabase {
      * 在字节数组中查找第一个等于 b 的下标，未找到返回 -1。
      */
     private static int indexOf(byte[] a, byte b) {
-        for (int i = 0; i < a.length; i++) if (a[i] == b) return i;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] == b) {
+                return i;
+            }
+        }
         return -1;
-    }
-
-    /**
-     * 从对象库 load 得到的原始对象：类型（blob/tree/commit）与解压后的 body 字节。
-     */
-    @Value
-    public static class RawObject {
-        String type;
-        byte[] body;
     }
 }

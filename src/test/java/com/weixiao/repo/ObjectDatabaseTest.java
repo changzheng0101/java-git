@@ -31,9 +31,9 @@ class ObjectDatabaseTest {
         String oid = db.store(blob);
         assertThat(oid).hasSize(40);
         assertThat(oid).matches("[0-9a-f]{40}");
-        ObjectDatabase.RawObject raw = db.load(oid);
+        var raw = db.load(oid);
         assertThat(raw.getType()).isEqualTo("blob");
-        assertThat(new String(raw.getBody(), java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("hello");
+        assertThat(new String(raw.toBytes(), java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("hello");
     }
 
     /**
@@ -52,7 +52,7 @@ class ObjectDatabaseTest {
         Tree tree = new Tree(List.of(new TreeEntry("100644", "a.txt", blobOid)));
         String treeOid = db.store(tree);
         assertThat(treeOid).hasSize(40);
-        ObjectDatabase.RawObject raw = db.load(treeOid);
+        var raw = db.load(treeOid);
         assertThat(raw.getType()).isEqualTo("tree");
     }
 
@@ -74,9 +74,9 @@ class ObjectDatabaseTest {
         Commit commit = Commit.first(treeOid, "u <u@local> 0 +0000", "first");
         String commitOid = db.store(commit);
         assertThat(commitOid).hasSize(40);
-        ObjectDatabase.RawObject raw = db.load(commitOid);
+        var raw = db.load(commitOid);
         assertThat(raw.getType()).isEqualTo("commit");
-        String body = new String(raw.getBody(), java.nio.charset.StandardCharsets.UTF_8);
+        String body = new String(raw.toBytes(), java.nio.charset.StandardCharsets.UTF_8);
         assertThat(body).contains("tree " + treeOid);
         assertThat(body).contains("first");
     }

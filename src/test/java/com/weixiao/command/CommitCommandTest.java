@@ -99,7 +99,7 @@ class CommitCommandTest {
         assertThat(head).isNotNull();
         assertThat(head).hasSize(40);
         assertThat(repo.getDatabase().exists(head)).isTrue();
-        com.weixiao.repo.ObjectDatabase.RawObject commitObj = repo.getDatabase().load(head);
+        var commitObj = repo.getDatabase().load(head);
         assertThat(commitObj.getType()).isEqualTo("commit");
     }
 

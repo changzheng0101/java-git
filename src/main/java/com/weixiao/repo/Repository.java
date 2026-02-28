@@ -115,11 +115,11 @@ public final class Repository {
         if (headOid == null) {
             return;
         }
-        ObjectDatabase.RawObject commitRaw = database.load(headOid);
+        var commitRaw = database.load(headOid);
         if (!"commit".equals(commitRaw.getType())) {
             throw new IOException("HEAD is not a commit: " + headOid);
         }
-        String treeOid = parseCommitTreeOid(commitRaw.getBody());
+        String treeOid = parseCommitTreeOid(commitRaw.toBytes());
         if (treeOid == null) {
             throw new IOException("invalid commit format: " + headOid);
         }
@@ -139,11 +139,11 @@ public final class Repository {
 
     private void collectTreePathToOid(String treeOid, String prefix,
                                       Map<String, String> pathToOid, Map<String, String> pathToMode) throws IOException {
-        ObjectDatabase.RawObject treeRaw = database.load(treeOid);
+        var treeRaw = database.load(treeOid);
         if (!"tree".equals(treeRaw.getType())) {
             throw new IOException("expected tree, got " + treeRaw.getType() + ": " + treeOid);
         }
-        List<TreeEntry> entries = parseTree(treeRaw.getBody());
+        List<TreeEntry> entries = parseTree(treeRaw.toBytes());
         for (TreeEntry entry : entries) {
             String path = prefix.isEmpty() ? entry.getName() : prefix + "/" + entry.getName();
             if ("40000".equals(entry.getMode())) {
