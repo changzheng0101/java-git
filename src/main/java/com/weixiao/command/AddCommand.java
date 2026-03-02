@@ -95,6 +95,7 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
 
     /**
      * 添加单个文件到暂存区，使用文件真实 stat（ctime/mtime/dev/ino/uid/gid）。
+     * todo 考虑删除文件的情况，这时候执行add命令，其实是将对应删除的文件从index中移除
      */
     private void addFile(Repository repo, Path root, Path filePath) throws IOException {
         String relative = root.relativize(filePath).toString().replace('\\', '/');

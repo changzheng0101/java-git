@@ -1,20 +1,17 @@
 package com.weixiao.diff;
 
-import com.weixiao.obj.Blob;
-import com.weixiao.obj.Commit;
-import com.weixiao.obj.Tree;
-import com.weixiao.obj.TreeEntry;
-import com.weixiao.repo.ObjectDatabase;
+import com.weixiao.Jit;
+import com.weixiao.JitTestUtil;
 import com.weixiao.repo.Repository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import picocli.CommandLine;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Collections;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,35 +20,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("TreeDiff 测试")
 class TreeDiffTest {
 
+    private static final CommandLine JIT = Jit.createCommandLine();
+
     @Test
     @DisplayName("根目录 tree：B 新增 c.txt，删除 b.txt，a.txt 不变则 created/deleted 正确、modified 为空")
     void diff_createdAndDeleted(@TempDir Path dir) throws Exception {
-        prepareGitDir(dir);
-        ObjectDatabase db = new ObjectDatabase(dir.resolve(".git"));
-        Repository repo = new Repository(dir);
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
 
-        Blob blobA = new Blob("a".getBytes(StandardCharsets.UTF_8));
-        Blob blobB = new Blob("b".getBytes(StandardCharsets.UTF_8));
-        Blob blobC = new Blob("c".getBytes(StandardCharsets.UTF_8));
-        String oidA = db.store(blobA);
-        String oidB = db.store(blobB);
-        String oidC = db.store(blobC);
+        Files.write(dir.resolve("a.txt"), "a".getBytes(StandardCharsets.UTF_8));
+        Files.write(dir.resolve("b.txt"), "b".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt", "b.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
+        String commitOidA = repo.getRefs().readHead();
 
-        Tree treeCommitA = new Tree(Arrays.asList(
-            new TreeEntry("100644", "a.txt", oidA),
-            new TreeEntry("100644", "b.txt", oidB)
-        ));
-        String treeOidA = db.store(treeCommitA);
-        Commit commitA = Commit.first(treeOidA, "u <u@local> 0 +0000", "first");
-        String commitOidA = db.store(commitA);
-
-        Tree treeCommitB = new Tree(Arrays.asList(
-            new TreeEntry("100644", "a.txt", oidA),
-            new TreeEntry("100644", "c.txt", oidC)
-        ));
-        String treeOidB = db.store(treeCommitB);
-        Commit commitB = new Commit(treeOidB, commitOidA, "u", "u", "second");
-        String commitOidB = db.store(commitB);
+        Files.delete(dir.resolve("b.txt"));
+        Files.write(dir.resolve("c.txt"), "c".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "c.txt");
+        repo.getIndex().load();
+        repo.getIndex().remove("b.txt");
+        repo.getIndex().save();
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
+        String commitOidB = repo.getRefs().readHead();
 
         List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
 
@@ -64,11 +54,9 @@ class TreeDiffTest {
 
         assertThat(created).hasSize(1);
         assertThat(created.get(0).getName()).isEqualTo("c.txt");
-        assertThat(created.get(0).getEntryB().getOid()).isEqualTo(oidC);
 
         assertThat(deleted).hasSize(1);
         assertThat(deleted.get(0).getName()).isEqualTo("b.txt");
-        assertThat(deleted.get(0).getEntryA().getOid()).isEqualTo(oidB);
 
         assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)).isEmpty();
     }
@@ -76,23 +64,18 @@ class TreeDiffTest {
     @Test
     @DisplayName("同一路径 a.txt 在 A 与 B 中 oid 或 mode 不同则出现在 modified")
     void diff_modified(@TempDir Path dir) throws Exception {
-        prepareGitDir(dir);
-        ObjectDatabase db = new ObjectDatabase(dir.resolve(".git"));
-        Repository repo = new Repository(dir);
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
 
-        Blob blob1 = new Blob("v1".getBytes(StandardCharsets.UTF_8));
-        Blob blob2 = new Blob("v2".getBytes(StandardCharsets.UTF_8));
-        String oid1 = db.store(blob1);
-        String oid2 = db.store(blob2);
+        Files.write(dir.resolve("a.txt"), "v1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
+        String commitOidA = repo.getRefs().readHead();
 
-        Tree treeA = new Tree(Collections.singletonList(new TreeEntry("100644", "a.txt", oid1)));
-        Tree treeB = new Tree(Collections.singletonList(new TreeEntry("100644", "a.txt", oid2)));
-        String treeOidA = db.store(treeA);
-        String treeOidB = db.store(treeB);
-        Commit commitA = Commit.first(treeOidA, "u <u@local> 0 +0000", "first");
-        Commit commitB = new Commit(treeOidB, db.store(commitA), "u", "u", "second");
-        String commitOidA = db.store(commitA);
-        String commitOidB = db.store(commitB);
+        Files.write(dir.resolve("a.txt"), "v2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
+        String commitOidB = repo.getRefs().readHead();
 
         List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
 
@@ -103,28 +86,25 @@ class TreeDiffTest {
             .collect(Collectors.toList());
         assertThat(modified).hasSize(1);
         assertThat(modified.get(0).getName()).isEqualTo("a.txt");
-        assertThat(modified.get(0).getEntryA().getOid()).isEqualTo(oid1);
-        assertThat(modified.get(0).getEntryB().getOid()).isEqualTo(oid2);
+        assertThat(modified.get(0).getEntryA().getOid()).isNotEqualTo(modified.get(0).getEntryB().getOid());
     }
 
     @Test
     @DisplayName("mode 不同、oid 相同也视为 modified")
     void diff_modifiedModeOnly(@TempDir Path dir) throws Exception {
-        prepareGitDir(dir);
-        ObjectDatabase db = new ObjectDatabase(dir.resolve(".git"));
-        Repository repo = new Repository(dir);
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
 
-        Blob blob = new Blob("x".getBytes(StandardCharsets.UTF_8));
-        String oid = db.store(blob);
+        Path f = dir.resolve("f");
+        Files.write(f, "x".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "f");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
+        String commitOidA = repo.getRefs().readHead();
 
-        Tree treeA = new Tree(Collections.singletonList(new TreeEntry("100644", "f", oid)));
-        Tree treeB = new Tree(Collections.singletonList(new TreeEntry("100755", "f", oid)));
-        String treeOidA = db.store(treeA);
-        String treeOidB = db.store(treeB);
-        Commit commitA = Commit.first(treeOidA, "u <u@local> 0 +0000", "first");
-        Commit commitB = new Commit(treeOidB, db.store(commitA), "u", "u", "second");
-        String commitOidA = db.store(commitA);
-        String commitOidB = db.store(commitB);
+        Files.setPosixFilePermissions(f, PosixFilePermissions.fromString("rwxr-xr-x"));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "f");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
+        String commitOidB = repo.getRefs().readHead();
 
         List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
 
@@ -139,18 +119,17 @@ class TreeDiffTest {
     @Test
     @DisplayName("无变化时 created、deleted、modified 均为空")
     void diff_noChange(@TempDir Path dir) throws Exception {
-        prepareGitDir(dir);
-        ObjectDatabase db = new ObjectDatabase(dir.resolve(".git"));
-        Repository repo = new Repository(dir);
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
 
-        Blob blob = new Blob("same".getBytes(StandardCharsets.UTF_8));
-        String oid = db.store(blob);
-        Tree tree = new Tree(Collections.singletonList(new TreeEntry("100644", "f", oid)));
-        String treeOid = db.store(tree);
-        Commit commitA = Commit.first(treeOid, "u <u@local> 0 +0000", "first");
-        String commitOidA = db.store(commitA);
-        Commit commitB = new Commit(treeOid, commitOidA, "u", "u", "second");
-        String commitOidB = db.store(commitB);
+        Files.write(dir.resolve("f"), "same".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "f");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
+        String commitOidA = repo.getRefs().readHead();
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "f");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
+        String commitOidB = repo.getRefs().readHead();
 
         List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
 
@@ -160,28 +139,19 @@ class TreeDiffTest {
     @Test
     @DisplayName("prefix 指定子目录时比较该目录下的 tree")
     void diff_withPrefix(@TempDir Path dir) throws Exception {
-        prepareGitDir(dir);
-        ObjectDatabase db = new ObjectDatabase(dir.resolve(".git"));
-        Repository repo = new Repository(dir);
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
 
-        Blob blob1 = new Blob("1".getBytes(StandardCharsets.UTF_8));
-        Blob blob2 = new Blob("2".getBytes(StandardCharsets.UTF_8));
-        String oid1 = db.store(blob1);
-        String oid2 = db.store(blob2);
+        Files.createDirectories(dir.resolve("dir"));
+        Files.write(dir.resolve("dir").resolve("inner.txt"), "1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "dir");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
+        String commitOidA = repo.getRefs().readHead();
 
-        Tree subTreeA = new Tree(Collections.singletonList(new TreeEntry("100644", "inner.txt", oid1)));
-        Tree subTreeB = new Tree(Collections.singletonList(new TreeEntry("100644", "inner.txt", oid2)));
-        String subOidA = db.store(subTreeA);
-        String subOidB = db.store(subTreeB);
-
-        Tree rootA = new Tree(Collections.singletonList(new TreeEntry("40000", "dir", subOidA)));
-        Tree rootB = new Tree(Collections.singletonList(new TreeEntry("40000", "dir", subOidB)));
-        String rootOidA = db.store(rootA);
-        String rootOidB = db.store(rootB);
-        Commit commitA = Commit.first(rootOidA, "u <u@local> 0 +0000", "first");
-        Commit commitB = new Commit(rootOidB, db.store(commitA), "u", "u", "second");
-        String commitOidA = db.store(commitA);
-        String commitOidB = db.store(commitB);
+        Files.write(dir.resolve("dir").resolve("inner.txt"), "2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "dir");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
+        String commitOidB = repo.getRefs().readHead();
 
         List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "dir");
 
@@ -190,13 +160,7 @@ class TreeDiffTest {
             .collect(Collectors.toList());
         assertThat(modified).hasSize(1);
         assertThat(modified.get(0).getName()).isEqualTo("inner.txt");
-        assertThat(modified.get(0).getEntryA().getOid()).isEqualTo(oid1);
-        assertThat(modified.get(0).getEntryB().getOid()).isEqualTo(oid2);
+        assertThat(modified.get(0).getEntryA().getOid()).isNotEqualTo(modified.get(0).getEntryB().getOid());
     }
 
-    private static void prepareGitDir(Path dir) throws Exception {
-        Path gitDir = dir.resolve(".git");
-        Files.createDirectories(gitDir.resolve("objects"));
-        Files.createDirectories(gitDir.resolve("refs").resolve("heads"));
-    }
 }

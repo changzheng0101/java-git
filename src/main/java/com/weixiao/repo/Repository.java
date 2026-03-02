@@ -2,6 +2,7 @@ package com.weixiao.repo;
 
 import com.weixiao.model.StatusResult;
 import com.weixiao.obj.Blob;
+import com.weixiao.obj.GitObject;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.HexUtils;
 import lombok.Getter;
@@ -15,10 +16,11 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 仓库：定位 .git 目录，提供 ObjectDatabase、Refs、Workspace。
- * 代表整个git仓库的一个抽象
+ * 按仓库根路径单例缓存，同一根目录返回同一实例。
  */
 @Getter
 public final class Repository {
@@ -26,6 +28,8 @@ public final class Repository {
     private static final Logger log = LoggerFactory.getLogger(Repository.class);
 
     private static final String GIT_DIR = ".git";
+
+    private static final Map<String, Repository> INSTANCE_CACHE = new ConcurrentHashMap<>();
 
     /**
      * 工作区根目录（即仓库根）
@@ -54,8 +58,9 @@ public final class Repository {
 
     /**
      * 以给定路径为仓库根（工作区根），.git 为 root/.git，并创建 ObjectDatabase、Refs、Workspace。
+     * 仅供内部使用；对外通过 {@link #find(Path)} 获取单例。
      */
-    public Repository(Path root) {
+    private Repository(Path root) {
         this.root = root.toAbsolutePath().normalize();
         this.gitDir = this.root.resolve(GIT_DIR);
         this.database = new ObjectDatabase(gitDir);
@@ -66,8 +71,21 @@ public final class Repository {
 
     /**
      * 从当前目录向上查找包含 .git 的目录作为仓库根；未找到返回 null。
+     * 同一仓库根路径返回缓存的单例实例。
      */
     public static Repository find(Path start) {
+        Path root = resolveRoot(start);
+        if (root == null) {
+            return null;
+        }
+        String key = root.toAbsolutePath().normalize().toString();
+        return INSTANCE_CACHE.computeIfAbsent(key, k -> new Repository(root));
+    }
+
+    /**
+     * 从 start 向上查找 .git 所在目录作为仓库根；未找到返回 null。
+     */
+    private static Path resolveRoot(Path start) {
         Path current = start.toAbsolutePath().normalize();
         Path root = Paths.get("/").normalize();
         log.debug("find repo start={}", current);
@@ -75,7 +93,7 @@ public final class Repository {
             if (Files.exists(current.resolve(GIT_DIR))
                     && Files.isDirectory(current.resolve(GIT_DIR))) {
                 log.info("found repo at {}", current);
-                return new Repository(current);
+                return current;
             }
             current = current.getParent();
         }
@@ -115,7 +133,7 @@ public final class Repository {
         if (headOid == null) {
             return;
         }
-        var commitRaw = database.load(headOid);
+        GitObject commitRaw = database.load(headOid);
         if (!"commit".equals(commitRaw.getType())) {
             throw new IOException("HEAD is not a commit: " + headOid);
         }
@@ -139,7 +157,7 @@ public final class Repository {
 
     private void collectTreePathToOid(String treeOid, String prefix,
                                       Map<String, String> pathToOid, Map<String, String> pathToMode) throws IOException {
-        var treeRaw = database.load(treeOid);
+        GitObject treeRaw = database.load(treeOid);
         if (!"tree".equals(treeRaw.getType())) {
             throw new IOException("expected tree, got " + treeRaw.getType() + ": " + treeOid);
         }
