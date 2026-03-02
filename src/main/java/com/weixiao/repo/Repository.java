@@ -16,11 +16,10 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 仓库：定位 .git 目录，提供 ObjectDatabase、Refs、Workspace。
- * 按仓库根路径单例缓存，同一根目录返回同一实例。
+ * 全局单例，{@link #find(Path)} 会更新该实例的属性（root、database 等），不创建新实例。
  */
 @Getter
 public final class Repository {
@@ -29,57 +28,68 @@ public final class Repository {
 
     private static final String GIT_DIR = ".git";
 
-    private static final Map<String, Repository> INSTANCE_CACHE = new ConcurrentHashMap<>();
+    public static final Repository INSTANCE = new Repository();
 
     /**
      * 工作区根目录（即仓库根）
      */
-    private final Path root;
+    private Path root;
     /**
      * .git 目录路径
      */
-    private final Path gitDir;
+    private Path gitDir;
     /**
      * 对象库，用于 store/load blob、tree、commit
      */
-    private final ObjectDatabase database;
+    private ObjectDatabase database;
     /**
      * 引用，用于 readHead、updateMaster
      */
-    private final Refs refs;
+    private Refs refs;
     /**
      * 工作区，用于 listFiles、readFile
      */
-    private final Workspace workspace;
+    private Workspace workspace;
     /**
      * 暂存区，用于 add/commit
      */
-    private final Index index;
+    private Index index;
 
     /**
-     * 以给定路径为仓库根（工作区根），.git 为 root/.git，并创建 ObjectDatabase、Refs、Workspace。
-     * 仅供内部使用；对外通过 {@link #find(Path)} 获取单例。
+     * 单例构造，初始时各属性为 null；通过 {@link #find(Path)} 查找成功后会被 {@link #init(Path)} 填充。
      */
-    private Repository(Path root) {
+    private Repository() {
+        this.root = null;
+        this.gitDir = null;
+        this.database = new ObjectDatabase();
+        this.refs = new Refs();
+        this.workspace = new Workspace();
+        this.index = new Index();
+    }
+
+    /**
+     * 用指定仓库根更新单例属性（root、gitDir、database、refs、workspace、index）。
+     */
+    private void init(Path root) {
         this.root = root.toAbsolutePath().normalize();
         this.gitDir = this.root.resolve(GIT_DIR);
-        this.database = new ObjectDatabase(gitDir);
-        this.refs = new Refs(gitDir);
-        this.workspace = new Workspace(this.root);
-        this.index = new Index(gitDir);
+        this.database.setGitDir(this.gitDir);
+        this.refs.setGitDir(this.gitDir);
+        this.workspace.setRoot(this.root);
+        this.index.setGitDir(this.gitDir);
     }
 
     /**
      * 从当前目录向上查找包含 .git 的目录作为仓库根；未找到返回 null。
-     * 同一仓库根路径返回缓存的单例实例。
+     * 找到时更新全局单例的属性并返回该实例，不创建新实例。
      */
     public static Repository find(Path start) {
-        Path root = resolveRoot(start);
-        if (root == null) {
+        Path resolved = resolveRoot(start);
+        if (resolved == null) {
             return null;
         }
-        String key = root.toAbsolutePath().normalize().toString();
-        return INSTANCE_CACHE.computeIfAbsent(key, k -> new Repository(root));
+        INSTANCE.init(resolved);
+        return INSTANCE;
     }
 
     /**
@@ -99,6 +109,25 @@ public final class Repository {
         }
         log.debug("no repo found");
         return null;
+    }
+
+    /**
+     * 将指定 commit 的 tree 展开为 path -> oid 与 path -> mode，填入传入的 map（仅文件路径，不含目录）。
+     * 用于 checkout 等需要目标 tree 快照的场景。
+     */
+    public void collectCommitTreeTo(String commitOid, Map<String, String> pathToOid,
+                                    Map<String, String> pathToMode) throws IOException {
+        GitObject obj = database.load(commitOid);
+        if (!"commit".equals(obj.getType())) {
+            throw new IOException("not a commit: " + commitOid);
+        }
+        String treeOid = parseCommitTreeOid(obj.toBytes());
+        if (treeOid == null) {
+            throw new IOException("invalid commit format: " + commitOid);
+        }
+        pathToOid.clear();
+        pathToMode.clear();
+        collectTreePathToOid(treeOid, "", pathToOid, pathToMode);
     }
 
     /**

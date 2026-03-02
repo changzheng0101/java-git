@@ -1,0 +1,87 @@
+package com.weixiao.command;
+
+import com.weixiao.Jit;
+import com.weixiao.JitTestUtil;
+import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.obj.Commit;
+import com.weixiao.obj.GitObject;
+import com.weixiao.repo.Repository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import picocli.CommandLine;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DisplayName("CheckoutCommand 测试")
+class CheckoutCommandTest {
+
+    private static final CommandLine JIT = Jit.createCommandLine();
+
+    @Test
+    @DisplayName("在非仓库目录执行 checkout 失败并提示 not a jit repository")
+    void checkout_outsideRepo_fails(@TempDir Path dir) {
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "checkout", "master");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not a jit repository");
+    }
+
+    @Test
+    @DisplayName("无效 ref 时 checkout 失败并提示 fatal")
+    void checkout_invalidRef_fails(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "nonexistent-branch");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("fatal:");
+    }
+
+    @Test
+    @DisplayName("已有两个 commit 时 checkout 到前一个 commit，工作区和 HEAD 变为目标 commit 状态")
+    void checkout_toPreviousCommit_updatesWorkspaceAndHead(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+
+        Path a = tempDir.resolve("a.txt");
+        Files.write(a, "v1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
+
+        Files.write(a, "v2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
+        ExecuteResult secondCommit = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
+        assertThat(secondCommit.getExitCode()).isEqualTo(0);
+
+        Repository repo = Repository.find(tempDir);
+        String headAfterSecond = repo.getRefs().readHead();
+        GitObject headObj = repo.getDatabase().load(headAfterSecond);
+        String firstCommitOid = ((Commit) headObj).getParentOid();
+
+        ExecuteResult checkoutResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", firstCommitOid);
+        assertThat(checkoutResult.getExitCode()).as("checkout err: %s", checkoutResult.getErr()).isEqualTo(0);
+
+        repo = Repository.find(tempDir);
+        assertThat(repo.getRefs().readHead()).isEqualTo(firstCommitOid);
+        assertThat(new String(Files.readAllBytes(a), StandardCharsets.UTF_8)).isEqualTo("v1");
+    }
+
+    @Test
+    @DisplayName("checkout 到当前 HEAD 时无变更")
+    void checkout_toCurrentHead_noChange(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "content".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "only");
+
+        Repository repo = Repository.find(tempDir);
+        String headOid = repo.getRefs().readHead();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", headOid);
+        assertThat(result.getExitCode()).isEqualTo(0);
+        Repository repoAfter = Repository.find(tempDir);
+        assertThat(repoAfter.getRefs().readHead()).isEqualTo(headOid);
+    }
+}

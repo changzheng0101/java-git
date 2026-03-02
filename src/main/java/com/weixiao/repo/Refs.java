@@ -1,5 +1,7 @@
 package com.weixiao.repo;
 
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +15,8 @@ import java.util.regex.Pattern;
 /**
  * 引用：读取/写入 HEAD、refs/heads/*，分支名校验（与 Git check-ref-format 一致）。
  */
+@Data
+@NoArgsConstructor
 public final class Refs {
 
     private static final Logger log = LoggerFactory.getLogger(Refs.class);
@@ -28,7 +32,7 @@ public final class Refs {
     private static final String DOUBLE_DOT = "..";
     private static final String DOT_LOCK = ".lock";
 
-    private final Path gitDir;
+    private Path gitDir;
 
     public Refs(Path gitDir) {
         this.gitDir = gitDir;

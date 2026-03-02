@@ -5,6 +5,8 @@ import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.obj.Tree;
 import com.weixiao.utils.HexUtils;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,12 +30,14 @@ import java.util.zip.InflaterInputStream;
  * .git/objects 存储：按 oid 写入/读取对象，格式与 Git 一致（type size\0body，zlib 压缩）。
  * 可以直接访问文件系统
  */
+@Data
+@NoArgsConstructor
 public final class ObjectDatabase {
 
     private static final Logger log = LoggerFactory.getLogger(ObjectDatabase.class);
 
     private static final String OBJECTS_DIR = "objects";
-    private final Path gitDir;
+    private Path gitDir;
 
     /**
      * 以 .git 目录为基准，对象存储路径为 .git/objects。
@@ -105,6 +109,28 @@ public final class ObjectDatabase {
     }
 
     /**
+     *
+     * @param treeOid tree对应id
+     * @return tree对象
+     * @throws IOException 类型不匹配或者不存在的时候抛出
+     */
+    public Tree loadTree(String treeOid) throws IOException {
+        GitObject obj = this.load(treeOid);
+        if (!"tree".equals(obj.getType())) {
+            throw new IOException("expected tree, got " + obj.getType() + ": " + treeOid);
+        }
+        return (Tree) obj;
+    }
+
+    public Commit loadCommit(String commitId) throws IOException {
+        GitObject obj = this.load(commitId);
+        if (!"commit".equals(obj.getType())) {
+            throw new IOException("not a commit: " + commitId);
+        }
+        return (Commit) obj;
+    }
+
+    /**
      * 根据类型将 body 解析为 Commit、Tree 或 Blob。
      */
     private static GitObject parseObject(String type, byte[] body) throws IOException {
@@ -145,8 +171,8 @@ public final class ObjectDatabase {
         if (prefix.length() == 1) {
             try (Stream<Path> subdirs = Files.list(gitDir)) {
                 subdirs.filter(p -> Files.isDirectory(p))
-                    .filter(p -> p.getFileName().toString().startsWith(prefix))
-                    .forEach(subdir -> collectOidsInDir(oids, subdir, ""));
+                        .filter(p -> p.getFileName().toString().startsWith(prefix))
+                        .forEach(subdir -> collectOidsInDir(oids, subdir, ""));
             }
         } else {
             Path subdir = gitDir.resolve(prefix.substring(0, 2));
@@ -162,10 +188,10 @@ public final class ObjectDatabase {
     private void collectOidsInDir(List<String> oids, Path subdir, String filenamePrefix) {
         try (Stream<Path> files = Files.list(subdir)) {
             files.filter(p -> Files.isRegularFile(p))
-                .map(p -> p.getFileName().toString())
-                .filter(name -> name.startsWith(filenamePrefix))
-                .map(name -> subdir.getFileName().toString() + name)
-                .forEach(oids::add);
+                    .map(p -> p.getFileName().toString())
+                    .filter(name -> name.startsWith(filenamePrefix))
+                    .map(name -> subdir.getFileName().toString() + name)
+                    .forEach(oids::add);
         } catch (IOException e) {
             // 忽略单目录读取失败
         }

@@ -1,5 +1,7 @@
 package com.weixiao.repo;
 
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
@@ -18,12 +21,14 @@ import java.util.stream.Stream;
  * 工作区：列出并读取工作目录中的文件（排除 .、..、.git）。
  * 可以直接和文件系统进行交互
  */
+@Data
+@NoArgsConstructor
 public final class Workspace {
 
     private static final Logger log = LoggerFactory.getLogger(Workspace.class);
 
     private static final String GIT_DIR = ".git";
-    private final Path root;
+    private Path root;
 
     /**
      * 以给定路径为工作区根目录。
@@ -35,6 +40,7 @@ public final class Workspace {
     /**
      * 列出根目录下的普通文件（不含目录、不含 .git）。
      * 简化实现：仅一层，不递归子目录。
+     *
      * @deprecated 使用 listEntries() 支持递归目录
      */
     @Deprecated
@@ -79,7 +85,9 @@ public final class Workspace {
         return Files.readAllBytes(root.resolve(name));
     }
 
-    /** 读取指定路径的文件的全部字节。 */
+    /**
+     * 读取指定路径的文件的全部字节。
+     */
     public byte[] readFile(Path filePath) throws IOException {
         return Files.readAllBytes(filePath);
     }
@@ -181,5 +189,44 @@ public final class Workspace {
      */
     public Path getRoot() {
         return root;
+    }
+
+    /**
+     * 将内容写入工作区相对路径；先创建父目录再写入，并根据 mode 设置可执行位（100755）。
+     */
+    public void writeFile(String relativePath, byte[] content, String mode) throws IOException {
+        Path filePath = root.resolve(relativePath.replace('\\', '/')).normalize();
+        if (!filePath.startsWith(root)) {
+            throw new IOException("path escapes workspace: " + relativePath);
+        }
+        Path parent = filePath.getParent();
+        if (parent != null && !Files.exists(parent)) {
+            Files.createDirectories(parent);
+        }
+        Files.write(filePath, content != null ? content : new byte[0]);
+        if ("100755".equals(mode)) {
+            try {
+                Files.setPosixFilePermissions(filePath, PosixFilePermissions.fromString("rwxr-xr-x"));
+            } catch (UnsupportedOperationException e) {
+                log.debug("setPosixFilePermissions not supported for {}", filePath);
+            }
+        }
+        log.debug("writeFile path={} size={} mode={}", relativePath, content != null ? content.length : 0, mode);
+    }
+
+    /**
+     * 删除工作区中的文件或空目录；非空目录会抛出异常，调用方需先按子路径先删的顺序调用。
+     */
+    public void deletePath(String relativePath) throws IOException {
+        Path path = root.resolve(relativePath.replace('\\', '/')).normalize();
+        if (!path.startsWith(root)) {
+            throw new IOException("path escapes workspace: " + relativePath);
+        }
+        if (!Files.exists(path)) {
+            log.debug("deletePath path={} (already absent)", relativePath);
+            return;
+        }
+        Files.delete(path);
+        log.debug("deletePath path={}", relativePath);
     }
 }

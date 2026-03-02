@@ -2,6 +2,7 @@ package com.weixiao;
 
 import com.weixiao.command.AddCommand;
 import com.weixiao.command.BranchCommand;
+import com.weixiao.command.CheckoutCommand;
 import com.weixiao.command.CommitCommand;
 import com.weixiao.command.DiffCommand;
 import com.weixiao.command.InitCommand;
@@ -58,7 +59,8 @@ public class Jit implements Runnable {
                 .addSubcommand("commit", new CommitCommand())
                 .addSubcommand("status", new StatusCommand())
                 .addSubcommand("diff", new DiffCommand())
-                .addSubcommand("branch", new BranchCommand());
+                .addSubcommand("branch", new BranchCommand())
+                .addSubcommand("checkout", new CheckoutCommand());
     }
 
     /**

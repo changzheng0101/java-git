@@ -1,6 +1,8 @@
 package com.weixiao.repo;
 
 import com.weixiao.utils.HexUtils;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +27,8 @@ import lombok.Value;
  * 可选扩展、末尾 20 字节 SHA-1 校验和（对前面全部内容）。
  * Entry 格式（version 2）：ctime/mtime/dev/ino/mode/uid/gid/size/oid(20)/flags/name(NUL)/padding(8 字节对齐)。
  */
+@Data
+@NoArgsConstructor
 public final class Index {
 
     private static final Logger log = LoggerFactory.getLogger(Index.class);
@@ -36,7 +40,7 @@ public final class Index {
     private static final int OID_SIZE = 20;
     private static final int CHECKSUM_SIZE = 20;
 
-    private final Path gitDir;
+    private Path gitDir;
     private final List<Entry> entries = new ArrayList<>();
 
     public Index(Path gitDir) {
@@ -243,6 +247,14 @@ public final class Index {
         entries.removeIf(e -> e.getPath().startsWith(normalized + "/"));
         entries.add(new Entry(normalized, mode, oid, size, stat));
         log.debug("add entry path={} mode={} oid={} size={} stat={}", normalized, mode, oid, size, stat);
+    }
+
+    /**
+     * 清空暂存区所有条目（不写回文件），用于 checkout 等场景重置 index。
+     */
+    public void clear() {
+        entries.clear();
+        log.debug("index cleared");
     }
 
     /**

@@ -19,18 +19,30 @@ public final class DiffEntry {
      * B 侧（新）条目，DELETED 时为 null。
      */
     private final TreeEntry entryB;
+    /**
+     * 完整路径（如 "dir/file.txt"），为 null 时表示仅段名（getName()）。
+     */
+    private final String path;
 
-    public DiffEntry(DiffStatus status, TreeEntry entryA, TreeEntry entryB) {
+    public DiffEntry(DiffStatus status, TreeEntry entryA, TreeEntry entryB, String path) {
         this.status = status;
         this.entryA = entryA;
         this.entryB = entryB;
+        this.path = path;
     }
 
     /**
-     * 当前条目的名称（任一侧非 null 时取 name）。
+     * 当前条目的名称（任一侧非 null 时取 name，段名）。
      */
     public String getName() {
         return entryB != null ? entryB.getName() : entryA.getName();
+    }
+
+    /**
+     * 完整路径；未设置时返回 getName()（与单层 diff 兼容）。
+     */
+    public String getPath() {
+        return path != null ? path : getName();
     }
 
     public enum DiffStatus {

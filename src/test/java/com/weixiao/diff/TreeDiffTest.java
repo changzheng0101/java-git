@@ -43,7 +43,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
 
         List<DiffEntry> created = entries.stream()
             .filter(e -> e.getStatus() == DiffEntry.DiffStatus.CREATED)
@@ -77,7 +77,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
 
         assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.CREATED)).isEmpty();
         assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.DELETED)).isEmpty();
@@ -106,7 +106,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
 
         List<DiffEntry> modified = entries.stream()
             .filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)
@@ -131,7 +131,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
 
         assertThat(entries).isEmpty();
     }
@@ -153,7 +153,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(repo, commitOidA, commitOidB, "dir");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
 
         List<DiffEntry> modified = entries.stream()
             .filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)
