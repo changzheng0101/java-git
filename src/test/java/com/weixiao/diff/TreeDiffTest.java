@@ -11,6 +11,7 @@ import picocli.CommandLine;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -43,7 +44,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
 
         List<DiffEntry> created = entries.stream()
             .filter(e -> e.getStatus() == DiffEntry.DiffStatus.CREATED)
@@ -77,7 +78,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
 
         assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.CREATED)).isEmpty();
         assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.DELETED)).isEmpty();
@@ -106,7 +107,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
 
         List<DiffEntry> modified = entries.stream()
             .filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)
@@ -131,7 +132,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
 
         assertThat(entries).isEmpty();
     }
@@ -153,7 +154,7 @@ class TreeDiffTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
 
-        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, "");
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
 
         List<DiffEntry> modified = entries.stream()
             .filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)

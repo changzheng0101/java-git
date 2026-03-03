@@ -42,6 +42,25 @@ public class PathUtils {
     }
 
     /**
+     * Path 的深度（目录层级，即斜杠数）；null 或空视为 0。与 pathDepth(String) 语义一致。
+     */
+    public static int pathDepth(Path path) {
+        if (path == null) {
+            return 0;
+        }
+        int n = path.getNameCount();
+        return n <= 1 ? 0 : n - 1;
+    }
+
+    /**
+     * 归一化 Path 为相对路径字符串（反斜杠转正斜杠、去首尾空格、去掉开头 '/'）。
+     */
+    public static String normalizePath(Path path) {
+        return path == null ? "" : normalizePath(path.toString());
+    }
+
+
+    /**
      * e.g.
      * input : a/b/c.txt
      * 返回: a 和 a/b

@@ -7,11 +7,9 @@ import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
-
-import static com.weixiao.utils.Constants.*;
 
 /**
  * 比较两个 commit 在指定目录（prefix）下的 tree 差异。
@@ -29,32 +27,30 @@ public final class TreeDiff {
      *
      * @param commitIdA 基准 commit 的 40 位 oid，可为 null
      * @param commitIdB 对比 commit 的 40 位 oid
-     * @param prefix    从仓库根到目标目录的路径，空串表示根目录
-     * @return DiffEntry 列表（每项含 status、entryA、entryB）
+     * @param prefix    从仓库根到目标目录的路径，空或根时表示根目录
+     * @return DiffEntry 列表（每项含 status、entryA、entryB、path 为 Path）
      */
-    public static List<DiffEntry> diff(String commitIdA, String commitIdB, String prefix)
+    public static List<DiffEntry> diff(String commitIdA, String commitIdB, Path prefix)
             throws IOException {
         ObjectDatabase db = Repository.INSTANCE.getDatabase();
-        Tree treeA = getTreeAtPrefix(db, db.loadCommit(commitIdA).getTreeOid(), prefix);
+        Tree treeA = (commitIdA == null || commitIdA.isEmpty())
+            ? null
+            : getTreeAtPrefix(db, db.loadCommit(commitIdA).getTreeOid(), prefix);
         Tree treeB = getTreeAtPrefix(db, db.loadCommit(commitIdB).getTreeOid(), prefix);
         return compareTrees(db, treeA, treeB, prefix);
     }
 
-
     /**
      * 根据 prefix 从根 tree 向下解析到目标 tree；prefix 为空则返回根 tree。
-     * 从rootTreeOid开始，解析prefix对应的Tree
-     * 例如  /test/hello
-     * 将会从根目录下解析/test/hello之后返回hello文件夹对应的Tree
-     * 只保留不相同的文件，不保留不相同的文件夹
      */
-    private static Tree getTreeAtPrefix(ObjectDatabase db, String rootTreeOid, String prefix) throws IOException {
-        if (prefix == null || prefix.trim().isEmpty()) {
+    private static Tree getTreeAtPrefix(ObjectDatabase db, String rootTreeOid, Path prefix)
+            throws IOException {
+        if (prefix == null || prefix.getNameCount() == 0) {
             return db.loadTree(rootTreeOid);
         }
-        String[] directoryNames = prefix.trim().split(FileSystems.getDefault().getSeparator());
         String currentTreeOid = rootTreeOid;
-        for (String dirName : directoryNames) {
+        for (int i = 0; i < prefix.getNameCount(); i++) {
+            String dirName = prefix.getName(i).toString();
             if (dirName.isEmpty()) {
                 continue;
             }
@@ -68,7 +64,6 @@ public final class TreeDiff {
             }
             currentTreeOid = entry.getOid();
         }
-
         return db.loadTree(currentTreeOid);
     }
 
@@ -89,68 +84,66 @@ public final class TreeDiff {
 
     /**
      * 比较两个 tree 的直接子项：按 name 区分 CREATED、DELETED、MODIFIED（比较 oid 与 mode）。
-     * treeA 和 treeB 对应的前缀是 prefix。
      */
-    private static List<DiffEntry> compareTrees(ObjectDatabase db, Tree treeA, Tree treeB, String prefix)
+    private static List<DiffEntry> compareTrees(ObjectDatabase db, Tree treeA, Tree treeB, Path prefix)
             throws IOException {
         List<DiffEntry> diffEntries = new ArrayList<>();
+        Path base = (prefix != null && prefix.getNameCount() > 0) ? prefix : Paths.get("");
 
         if (treeA == null) {
             for (TreeEntry entry : treeB.getEntries()) {
+                Path childPath = base.resolve(entry.getName());
                 if (entry.isDirectory()) {
-                    diffEntries.addAll(compareTrees(db, null, db.loadTree(entry.getOid()),
-                            prefix + FILE_SEPARATOR + entry.getName()));
+                    diffEntries.addAll(compareTrees(db, null, db.loadTree(entry.getOid()), childPath));
                 } else {
-                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entry,
-                            prefix + FILE_SEPARATOR + entry.getName()));
+                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entry, childPath));
                 }
             }
             return diffEntries;
         }
         if (treeB == null) {
             for (TreeEntry entry : treeA.getEntries()) {
+                Path childPath = base.resolve(entry.getName());
                 if (entry.isDirectory()) {
-                    diffEntries.addAll(compareTrees(db, db.loadTree(entry.getOid()), null,
-                            prefix + FILE_SEPARATOR + entry.getName()));
+                    diffEntries.addAll(compareTrees(db, db.loadTree(entry.getOid()), null, childPath));
                 } else {
-                    diffEntries.add(new DiffEntry(DiffStatus.DELETED, entry, null,
-                            prefix + FILE_SEPARATOR + entry.getName()));
+                    diffEntries.add(new DiffEntry(DiffStatus.DELETED, entry, null, childPath));
                 }
             }
             return diffEntries;
         }
 
         for (TreeEntry entryB : treeB.getEntries()) {
-            String path = prefix + FILE_SEPARATOR + entryB.getName();
+            Path childPath = base.resolve(entryB.getName());
             TreeEntry entryA = findEntry(treeA, entryB.getName());
             if (entryB.isDirectory() && entryA == null) {
-                diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), path));
+                diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), childPath));
             }
             if (entryB.isDirectory() && entryA != null && entryA.isDirectory()) {
                 continue;
             }
 
             if (entryA == null) {
-                diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, path));
+                diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, childPath));
             } else if (!entryB.isDirectory() && !Objects.equals(entryA, entryB)) {
-                diffEntries.add(new DiffEntry(DiffStatus.MODIFIED, entryA, entryB, path));
+                diffEntries.add(new DiffEntry(DiffStatus.MODIFIED, entryA, entryB, childPath));
             }
         }
 
         for (TreeEntry entryA : treeA.getEntries()) {
-            String path = prefix + FILE_SEPARATOR + entryA.getName();
+            Path childPath = base.resolve(entryA.getName());
 
             if (entryA.isDirectory()) {
                 TreeEntry bEntry = findEntry(treeB, entryA.getName());
                 diffEntries.addAll(compareTrees(db,
-                        db.loadTree(entryA.getOid()),
-                        bEntry == null ? null : db.loadTree(bEntry.getOid()),
-                        path));
+                    db.loadTree(entryA.getOid()),
+                    bEntry == null ? null : db.loadTree(bEntry.getOid()),
+                    childPath));
                 continue;
             }
 
             if (findEntry(treeB, entryA.getName()) == null) {
-                diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, path));
+                diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, childPath));
             }
         }
 

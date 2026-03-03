@@ -3,6 +3,9 @@ package com.weixiao.diff;
 import com.weixiao.obj.TreeEntry;
 import lombok.Getter;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 /**
  * 单条 tree diff：状态 + A 侧条目 + B 侧条目。
  * CREATED 时 entryA 为 null；DELETED 时 entryB 为 null；MODIFIED 时两者均非 null。
@@ -20,11 +23,11 @@ public final class DiffEntry {
      */
     private final TreeEntry entryB;
     /**
-     * 完整路径（如 "dir/file.txt"），为 null 时表示仅段名（getName()）。
+     * 完整路径（如 dir/file.txt），为 null 时表示仅段名（getName()）。
      */
-    private final String path;
+    private final Path path;
 
-    public DiffEntry(DiffStatus status, TreeEntry entryA, TreeEntry entryB, String path) {
+    public DiffEntry(DiffStatus status, TreeEntry entryA, TreeEntry entryB, Path path) {
         this.status = status;
         this.entryA = entryA;
         this.entryB = entryB;
@@ -39,10 +42,10 @@ public final class DiffEntry {
     }
 
     /**
-     * 完整路径；未设置时返回 getName()（与单层 diff 兼容）。
+     * 完整路径；未设置时返回仅包含 getName() 的 Path（与单层 diff 兼容）。
      */
-    public String getPath() {
-        return path != null ? path : getName();
+    public Path getPath() {
+        return path != null ? path : Paths.get(getName());
     }
 
     public enum DiffStatus {

@@ -234,6 +234,37 @@ public final class Workspace {
         log.debug("deletePath path={}", relativePath);
     }
 
+    /**
+     * 递归删除路径（文件或目录，类似 rm -rf）；不进入 .git。
+     */
+    public void rm_rf(String relativePath) throws IOException {
+        Path path = root.resolve(relativePath.replace('\\', '/')).normalize();
+        if (!path.startsWith(root)) {
+            throw new IOException("path escapes workspace: " + relativePath);
+        }
+        if (!Files.exists(path)) {
+            return;
+        }
+        rm_rfRecursive(path);
+    }
+
+    private void rm_rfRecursive(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            List<Path> children;
+            try (java.util.stream.Stream<Path> stream = Files.list(path)) {
+                children = stream.collect(java.util.stream.Collectors.toList());
+            }
+            for (Path child : children) {
+                if (GIT_DIR.equals(child.getFileName().toString())) {
+                    continue;
+                }
+                rm_rfRecursive(child);
+            }
+            Files.delete(path);
+        } else {
+            Files.delete(path);
+        }
+    }
 
     /**
      * 应用一次迁移到工作区：先按删除列表 rm_rf，再按 rmdirs 删空目录（先子后父），再按 mkdirs 建目录（先父后子），最后写创建/修改的文件。
@@ -242,12 +273,14 @@ public final class Workspace {
         ObjectDatabase db = Repository.INSTANCE.getDatabase();
 
         for (DiffEntry e : m.getDeletes()) {
-            Files.delete(root.resolve(e.getPath()));
+            if (e.getEntryA() != null && !e.getEntryA().isDirectory()) {
+                rm_rf(PathUtils.normalizePath(e.getPath()));
+            }
         }
 
         // 删除delete操作执行完之后的空文件夹
         List<String> rmdirsSorted = new ArrayList<>(m.getRmdirs());
-        rmdirsSorted.sort(Comparator.comparingInt(PathUtils::pathDepth).reversed().thenComparing(s -> s));
+        rmdirsSorted.sort(Comparator.comparingInt((String s) -> PathUtils.pathDepth(s)).reversed().thenComparing(s -> s));
         for (String dir : rmdirsSorted) {
             Path p = root.resolve(dir);
             if (Files.exists(p) && Files.isDirectory(p)) {
@@ -263,7 +296,7 @@ public final class Workspace {
 
         // 创建必要的文件夹
         List<String> mkdirsSorted = new ArrayList<>(m.getMkdirs());
-        mkdirsSorted.sort(Comparator.comparingInt(PathUtils::pathDepth).thenComparing(s -> s));
+        mkdirsSorted.sort(Comparator.comparingInt((String s) -> PathUtils.pathDepth(s)).thenComparing(s -> s));
         for (String dir : mkdirsSorted) {
             Path p = root.resolve(dir);
             if (!Files.exists(p)) {

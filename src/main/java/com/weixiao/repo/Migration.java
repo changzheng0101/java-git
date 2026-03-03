@@ -2,7 +2,6 @@ package com.weixiao.repo;
 
 import com.weixiao.diff.DiffEntry;
 import com.weixiao.diff.TreeDiff;
-import com.weixiao.obj.GitObject;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.PathUtils;
 import lombok.Getter;
@@ -77,7 +76,7 @@ public final class Migration {
      * 创建与修改：将对应文件的父目录加入 mkdirs，确保写文件前目录存在。
      */
     public void planChanges() throws IOException {
-        List<DiffEntry> changes = TreeDiff.diff(currentCommitId, targetCommitOid, "");
+        List<DiffEntry> changes = TreeDiff.diff(currentCommitId, targetCommitOid, java.nio.file.Paths.get(""));
 
         rmdirs.clear();
         mkdirs.clear();
@@ -87,15 +86,15 @@ public final class Migration {
         for (DiffEntry c : changes) {
             switch (c.getStatus()) {
                 case DELETED:
-                    rmdirs.addAll(PathUtils.getAllParentDir(c.getPath()));
+                    rmdirs.addAll(PathUtils.getAllParentDir(c.getPath().toString()));
                     deletes.add(c);
                     break;
                 case CREATED:
-                    mkdirs.addAll(PathUtils.getAllParentDir(c.getPath()));
+                    mkdirs.addAll(PathUtils.getAllParentDir(c.getPath().toString()));
                     creates.add(c);
                     break;
                 case MODIFIED:
-                    mkdirs.addAll(PathUtils.getAllParentDir(c.getPath()));
+                    mkdirs.addAll(PathUtils.getAllParentDir(c.getPath().toString()));
                     modifies.add(c);
                     break;
                 default:
@@ -104,11 +103,11 @@ public final class Migration {
         }
 
         deletes.sort(Comparator
-                .comparingInt((DiffEntry c) -> PathUtils.pathDepth(PathUtils.normalizePath(c.getPath())))
+                .comparingInt((DiffEntry c) -> PathUtils.pathDepth(c.getPath()))
                 .reversed()
                 .thenComparing(c -> PathUtils.normalizePath(c.getPath())));
         Comparator<DiffEntry> byDepthAsc = Comparator
-                .comparingInt((DiffEntry c) -> PathUtils.pathDepth(PathUtils.normalizePath(c.getPath())))
+                .comparingInt((DiffEntry c) -> PathUtils.pathDepth(c.getPath()))
                 .thenComparing(c -> PathUtils.normalizePath(c.getPath()));
         creates.sort(byDepthAsc);
         modifies.sort(byDepthAsc);
@@ -134,7 +133,7 @@ public final class Migration {
 
         for (DiffEntry e : deletes) {
             if (e.getEntryA() != null && !e.getEntryA().isDirectory()) {
-                index.remove(PathUtils.normalizePath(e.getPath()));
+                index.remove(PathUtils.normalizePath(e.getPath().toString()));
             }
         }
 
@@ -142,14 +141,14 @@ public final class Migration {
             if (e.getEntryB() != null && !e.getEntryB().isDirectory()) {
                 Path filePath = root.resolve(e.getPath());
                 TreeEntry newEntry = e.getEntryB();
-                index.add(e.getPath(), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
+                index.add(PathUtils.normalizePath(e.getPath()), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
             }
         }
         for (DiffEntry e : modifies) {
             if (e.getEntryB() != null && !e.getEntryB().isDirectory()) {
                 Path filePath = root.resolve(e.getPath());
                 TreeEntry newEntry = e.getEntryB();
-                index.add(e.getPath(), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
+                index.add(PathUtils.normalizePath(e.getPath()), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
             }
         }
 
