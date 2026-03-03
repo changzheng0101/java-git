@@ -56,6 +56,9 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
             Migration migration = new Migration(headOid, targetCommitOid);
             migration.validate();
             migration.applyChanges();
+
+            repo.getRefs().updateHead(ref, targetCommitOid);
+
             log.info("checkout done ref={} oid={}", ref, targetCommitOid);
         } catch (RevisionParseException e) {
             log.warn("checkout parse failed ref={}", ref, e);

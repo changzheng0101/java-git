@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.weixiao.revision.Revision;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
@@ -39,28 +40,54 @@ public final class Refs {
     }
 
     /**
-     * 解析 HEAD，返回当前分支上的 commit oid；若未设置则返回 null。
+     * 解析 HEAD，返回当前指向的 commit oid（symref 时读分支 ref，detached 时读 HEAD 内容）；若未设置则返回 null。
      */
     public String readHead() throws IOException {
-        String ref = getHeadRef();
-        return ref != null ? readRef(ref) : null;
+        String content = getHeadContent();
+        if (content == null || content.isEmpty()) {
+            return null;
+        }
+        Matcher m = HEAD_REF.matcher(content);
+        if (m.matches()) {
+            return readRef(m.group(1).trim());
+        }
+        return content;
     }
 
     /**
-     * 返回 HEAD 指向的 ref（如 refs/heads/master）；若 HEAD 为 detached 或不存在则返回 null。
+     * 返回 HEAD 指向的 ref（如 refs/heads/master）；若 HEAD 为 detached（直接存 commit id）或不存在则返回 null。
      */
     public String getHeadRef() throws IOException {
-        Path headFile = gitDir.resolve(HEAD);
-        if (!Files.exists(headFile)) {
-            log.debug("getHeadRef: no HEAD file");
+        String content = getHeadContent();
+        if (content == null) {
             return null;
         }
-        String content = Files.readString(headFile, StandardCharsets.UTF_8).trim();
         Matcher m = HEAD_REF.matcher(content);
         if (!m.matches()) {
             return null;
         }
         return m.group(1).trim();
+    }
+
+    /**
+     * 读取 HEAD 文件原始内容（trim 后）；不存在则返回 null。
+     */
+    private String getHeadContent() throws IOException {
+        Path headFile = gitDir.resolve(HEAD);
+        if (!Files.exists(headFile)) {
+            log.debug("getHeadContent: no HEAD file");
+            return null;
+        }
+        return Files.readString(headFile, StandardCharsets.UTF_8).trim();
+    }
+
+    /**
+     * 将 HEAD 直接指向 commit oid（detached HEAD）。用于在 detached 状态下提交时只移动 HEAD、不更新任何分支。
+     */
+    public void writeHeadOid(String oid) throws IOException {
+        Path headFile = gitDir.resolve(HEAD);
+        Files.writeString(headFile, oid + "\n", StandardCharsets.UTF_8);
+        log.debug("writeHeadOid detached HEAD -> {}", oid);
     }
 
     /**
@@ -88,20 +115,30 @@ public final class Refs {
     }
 
     /**
-     * 将当前分支（HEAD 指向的 ref）更新为给定 commit oid；若 HEAD 未指向分支则更新 refs/heads/master。
+     * 提交后更新 HEAD：若 HEAD 为 symref（指向 refs/heads/xxx）则更新该分支 ref；若为 detached HEAD 则只将 HEAD 文件改为新 commit oid，不更新任何分支。
      */
     public void updateCurrentBranch(String oid) throws IOException {
         String headRef = getHeadRef();
-        String ref = (headRef != null && headRef.startsWith(REFS_HEADS)) ? headRef : REFS_HEADS_MASTER;
-        writeRef(ref, oid);
+        if (headRef != null && headRef.startsWith(REFS_HEADS)) {
+            writeRef(headRef, oid);
+        } else {
+            writeHeadOid(oid);
+        }
     }
 
     /**
-     * 将 refs/heads/master 更新为给定 commit oid。
+     *
+     * @param target   要更新的目标 可能是分支名，如果分支名匹配不上，默认直接更新当前分支
+     * @param commitId 对应的commitId
      */
-    public void updateMaster(String oid) throws IOException {
-        writeRef(REFS_HEADS_MASTER, oid);
+    public void updateHead(String target, String commitId) throws IOException {
+        if (branchExists(target)) {
+            writeRef(REFS_HEADS + target, commitId);
+        } else {
+            writeHeadOid(commitId);
+        }
     }
+
 
     /**
      * 校验分支名是否合法（对应 refs/heads/&lt;name&gt; 的 name 部分）。
@@ -160,7 +197,7 @@ public final class Refs {
     /**
      * 判断 refs/heads/&lt;name&gt; 是否已存在。
      */
-    public boolean branchExists(String name) throws IOException {
+    public boolean branchExists(String name) {
         Path refPath = gitDir.resolve(REFS_HEADS + name);
         return Files.exists(refPath);
     }

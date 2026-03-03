@@ -59,8 +59,7 @@ public final class Migration {
         planChanges();
         updateWorkspace();
         updateIndex();
-        Repository.INSTANCE.getRefs().updateMaster(targetCommitOid);
-        log.info("migration applied, HEAD -> {}", targetCommitOid);
+
     }
 
     /**
