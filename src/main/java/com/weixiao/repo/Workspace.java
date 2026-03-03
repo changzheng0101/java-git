@@ -1,5 +1,8 @@
 package com.weixiao.repo;
 
+import com.weixiao.diff.DiffEntry;
+import com.weixiao.obj.GitObject;
+import com.weixiao.utils.PathUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
@@ -8,12 +11,13 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -228,5 +232,62 @@ public final class Workspace {
         }
         Files.delete(path);
         log.debug("deletePath path={}", relativePath);
+    }
+
+
+    /**
+     * 应用一次迁移到工作区：先按删除列表 rm_rf，再按 rmdirs 删空目录（先子后父），再按 mkdirs 建目录（先父后子），最后写创建/修改的文件。
+     */
+    public void applyMigration(Migration m) throws IOException {
+        ObjectDatabase db = Repository.INSTANCE.getDatabase();
+
+        for (DiffEntry e : m.getDeletes()) {
+            Files.delete(root.resolve(e.getPath()));
+        }
+
+        // 删除delete操作执行完之后的空文件夹
+        List<String> rmdirsSorted = new ArrayList<>(m.getRmdirs());
+        rmdirsSorted.sort(Comparator.comparingInt(PathUtils::pathDepth).reversed().thenComparing(s -> s));
+        for (String dir : rmdirsSorted) {
+            Path p = root.resolve(dir);
+            if (Files.exists(p) && Files.isDirectory(p)) {
+                try {
+                    if (!Files.list(p).iterator().hasNext()) {
+                        deletePath(dir);
+                    }
+                } catch (IOException ignored) {
+                    // 非空则跳过
+                }
+            }
+        }
+
+        // 创建必要的文件夹
+        List<String> mkdirsSorted = new ArrayList<>(m.getMkdirs());
+        mkdirsSorted.sort(Comparator.comparingInt(PathUtils::pathDepth).thenComparing(s -> s));
+        for (String dir : mkdirsSorted) {
+            Path p = root.resolve(dir);
+            if (!Files.exists(p)) {
+                Files.createDirectories(p);
+            }
+        }
+
+        for (DiffEntry e : m.getCreates()) {
+            writeEntry(db, e);
+        }
+        for (DiffEntry e : m.getModifies()) {
+            writeEntry(db, e);
+        }
+    }
+
+    private void writeEntry(ObjectDatabase db, DiffEntry e) throws IOException {
+        String path = PathUtils.normalizePath(e.getPath());
+        String oid = e.getEntryB().getOid();
+        String mode = e.getEntryB().getMode();
+        GitObject obj = db.load(oid);
+        if (!"blob".equals(obj.getType())) {
+            throw new IOException("expected blob for path " + path + ", got " + obj.getType());
+        }
+        byte[] content = obj.toBytes();
+        writeFile(path, content, mode);
     }
 }

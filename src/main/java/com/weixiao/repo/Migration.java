@@ -1,12 +1,17 @@
 package com.weixiao.repo;
 
 import com.weixiao.diff.DiffEntry;
+import com.weixiao.diff.TreeDiff;
 import com.weixiao.obj.GitObject;
+import com.weixiao.obj.TreeEntry;
+import com.weixiao.utils.PathUtils;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -15,47 +20,82 @@ import java.util.Set;
 
 /**
  * 一次迁移：对 workspace 和 index 的变更进行合法性检查后应用。
- * 先更新 workspace（先删除后创建/修改，删除时先子后父，创建时先父后子），再按目标 commit 状态更新 index，最后更新 HEAD。
+ * 先计划（按删除、创建、修改分组并排序），再执行：先更新 workspace（先删后建，删除先子后父，创建先父后子），
+ * 再按目标 commit 状态更新 index，最后更新 HEAD。
  */
+@Getter
 public final class Migration {
 
     private static final Logger log = LoggerFactory.getLogger(Migration.class);
 
-    private final List<DiffEntry> changes;
-    private final List<DiffEntry> targetIndexEntries;
+    private final String currentCommitId;
     private final String targetCommitOid;
 
-    public Migration(List<DiffEntry> changes, List<DiffEntry> targetIndexEntries, String targetCommitOid) {
-        this.changes = changes != null ? new ArrayList<>(changes) : new ArrayList<>();
-        this.targetIndexEntries = targetIndexEntries != null ? new ArrayList<>(targetIndexEntries) : new ArrayList<>();
+    /**
+     * 可能需要删除的目录路径（删除文件中产生的空父目录候选），由 planChanges 填充。
+     */
+    private final Set<String> rmdirs = new HashSet<>();
+    /**
+     * 需要确保存在的目录路径（创建/修改文件前需存在的父目录），由 planChanges 填充。
+     */
+    private final Set<String> mkdirs = new HashSet<>();
+
+    private List<DiffEntry> deletes = new ArrayList<>();
+    private List<DiffEntry> creates = new ArrayList<>();
+    private List<DiffEntry> modifies = new ArrayList<>();
+
+    /**
+     * @param currentCommitId 当前 commit oid（如 HEAD），可为 null 表示无当前提交
+     * @param targetCommitOid 目标 commit oid，用于 diff、填充 index 与更新 HEAD
+     */
+    public Migration(String currentCommitId, String targetCommitOid) {
+        this.currentCommitId = currentCommitId;
         this.targetCommitOid = targetCommitOid;
     }
 
     /**
-     * 检查对 workspace 和 index 的变更是否合法，先留空。
+     * 将变更应用到仓库：先计划，再更新 workspace，再更新 index，最后更新 HEAD。
+     */
+    public void applyChanges() throws IOException {
+        planChanges();
+        updateWorkspace();
+        updateIndex();
+        Repository.INSTANCE.getRefs().updateMaster(targetCommitOid);
+        log.info("migration applied, HEAD -> {}", targetCommitOid);
+    }
+
+    /**
+     * 检查对 workspace 和 index 的变更是否合法，由外界在 applyChanges 前调用，先留空。
      */
     public void validate() {
         // TODO: 检查状态是否合法
     }
 
     /**
-     * 将变更应用到仓库：先 workspace（先删后建），再 index，最后 HEAD。
+     * 计划变更：拉取 diff，按删除/创建/修改分组排序，并填充 rmdirs、mkdirs。
+     * 删除类变更：将对应文件的全部父目录加入 rmdirs，作为后续可删除的空目录候选。
+     * 创建与修改：将对应文件的父目录加入 mkdirs，确保写文件前目录存在。
      */
-    public void applyChanges(Repository repo) throws IOException {
-        validate();
+    public void planChanges() throws IOException {
+        List<DiffEntry> changes = TreeDiff.diff(currentCommitId, targetCommitOid, "");
 
-        List<DiffEntry> deletes = new ArrayList<>();
-        List<DiffEntry> creates = new ArrayList<>();
-        List<DiffEntry> modifies = new ArrayList<>();
+        rmdirs.clear();
+        mkdirs.clear();
+        deletes = new ArrayList<>();
+        creates = new ArrayList<>();
+        modifies = new ArrayList<>();
         for (DiffEntry c : changes) {
             switch (c.getStatus()) {
                 case DELETED:
+                    rmdirs.addAll(PathUtils.getAllParentDir(c.getPath()));
                     deletes.add(c);
                     break;
                 case CREATED:
+                    mkdirs.addAll(PathUtils.getAllParentDir(c.getPath()));
                     creates.add(c);
                     break;
                 case MODIFIED:
+                    mkdirs.addAll(PathUtils.getAllParentDir(c.getPath()));
                     modifies.add(c);
                     break;
                 default:
@@ -63,108 +103,56 @@ public final class Migration {
             }
         }
 
-        // 删除：先子路径后父路径（深度从大到小）
         deletes.sort(Comparator
-            .comparingInt((DiffEntry c) -> pathDepth(c.getPath()))
-            .reversed()
-            .thenComparing(DiffEntry::getPath));
-
-        // 创建与修改：先父路径后子路径（深度从小到大）
+                .comparingInt((DiffEntry c) -> PathUtils.pathDepth(PathUtils.normalizePath(c.getPath())))
+                .reversed()
+                .thenComparing(c -> PathUtils.normalizePath(c.getPath())));
         Comparator<DiffEntry> byDepthAsc = Comparator
-            .comparingInt((DiffEntry c) -> pathDepth(c.getPath()))
-            .thenComparing(DiffEntry::getPath);
+                .comparingInt((DiffEntry c) -> PathUtils.pathDepth(PathUtils.normalizePath(c.getPath())))
+                .thenComparing(c -> PathUtils.normalizePath(c.getPath()));
         creates.sort(byDepthAsc);
         modifies.sort(byDepthAsc);
-
-        Workspace ws = repo.getWorkspace();
-        ObjectDatabase db = repo.getDatabase();
-
-        for (DiffEntry c : deletes) {
-            ws.deletePath(c.getPath());
-        }
-        removeEmptyParentDirs(repo, deletes);
-        for (DiffEntry c : creates) {
-            applyCreateOrModify(ws, db, c);
-        }
-        for (DiffEntry c : modifies) {
-            applyCreateOrModify(ws, db, c);
-        }
-
-        applyIndex(repo);
-        repo.getRefs().updateMaster(targetCommitOid);
-        log.info("migration applied, HEAD -> {}", targetCommitOid);
     }
 
-    private static void removeEmptyParentDirs(Repository repo, List<DiffEntry> deletes) throws IOException {
-        Set<String> parentDirs = new HashSet<>();
-        for (DiffEntry c : deletes) {
-            String p = c.getPath();
-            int i = p.lastIndexOf('/');
-            while (i > 0) {
-                parentDirs.add(p.substring(0, i));
-                i = p.lastIndexOf('/', i - 1);
-            }
-        }
-        List<String> sorted = new ArrayList<>(parentDirs);
-        sorted.sort(Comparator.comparingInt(Migration::pathDepth).reversed().thenComparing(s -> s));
-        for (String dir : sorted) {
-            java.nio.file.Path path = repo.getRoot().resolve(dir.replace('\\', '/'));
-            if (Files.exists(path) && Files.isDirectory(path)) {
-                try {
-                    if (!Files.list(path).iterator().hasNext()) {
-                        repo.getWorkspace().deletePath(dir);
-                    }
-                } catch (IOException ignored) {
-                    // 非空则跳过
-                }
-            }
-        }
+    /**
+     * 根据 planChanges 结果更新工作区：委托给 Workspace.applyMigration。
+     * 只有Workspace才能真正的操作文件
+     */
+    public void updateWorkspace() throws IOException {
+        Repository.INSTANCE.getWorkspace().applyMigration(this);
     }
 
-    private static int pathDepth(String path) {
-        if (path == null || path.isEmpty()) {
-            return 0;
-        }
-        int n = 0;
-        for (int i = 0; i < path.length(); i++) {
-            if (path.charAt(i) == '/') {
-                n++;
-            }
-        }
-        return n;
-    }
-
-    private static void applyCreateOrModify(Workspace ws, ObjectDatabase db, DiffEntry c) throws IOException {
-        String oid = c.getEntryB().getOid();
-        String mode = c.getEntryB().getMode();
-        GitObject obj = db.load(oid);
-        if (!"blob".equals(obj.getType())) {
-            throw new IOException("expected blob for path " + c.getPath() + ", got " + obj.getType());
-        }
-        byte[] content = obj.toBytes();
-        ws.writeFile(c.getPath(), content, mode);
-    }
-
-    private void applyIndex(Repository repo) throws IOException {
-        repo.getIndex().load();
-        repo.getIndex().clear();
-        ObjectDatabase db = repo.getDatabase();
+    /**
+     * 根据 deletes、creates、modifies 更新 index：对删除项执行 remove，对新增/修改项执行 add。
+     */
+    public void updateIndex() throws IOException {
+        Repository repo = Repository.INSTANCE;
         Index index = repo.getIndex();
-
         java.nio.file.Path root = repo.getRoot();
-        for (DiffEntry e : targetIndexEntries) {
-            String path = e.getPath();
-            String oid = e.getEntryB().getOid();
-            String mode = e.getEntryB().getMode();
-            GitObject obj = db.load(oid);
-            if (!"blob".equals(obj.getType())) {
-                continue;
+
+        index.load();
+
+        for (DiffEntry e : deletes) {
+            if (e.getEntryA() != null && !e.getEntryA().isDirectory()) {
+                index.remove(PathUtils.normalizePath(e.getPath()));
             }
-            int size = obj.toBytes().length;
-            java.nio.file.Path filePath = root.resolve(path.replace('\\', '/'));
-            Index.IndexStat stat = Workspace.getFileStat(filePath);
-            index.add(path, mode, oid, size, stat);
         }
+
+        for (DiffEntry e : creates) {
+            if (e.getEntryB() != null && !e.getEntryB().isDirectory()) {
+                Path filePath = root.resolve(e.getPath());
+                TreeEntry newEntry = e.getEntryB();
+                index.add(e.getPath(), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
+            }
+        }
+        for (DiffEntry e : modifies) {
+            if (e.getEntryB() != null && !e.getEntryB().isDirectory()) {
+                Path filePath = root.resolve(e.getPath());
+                TreeEntry newEntry = e.getEntryB();
+                index.add(e.getPath(), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
+            }
+        }
+
         index.save();
     }
 }

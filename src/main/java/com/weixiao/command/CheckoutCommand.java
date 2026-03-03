@@ -1,7 +1,6 @@
 package com.weixiao.command;
 
 import com.weixiao.Jit;
-import com.weixiao.diff.TreeDiff;
 import com.weixiao.repo.Migration;
 import com.weixiao.repo.Repository;
 import com.weixiao.revision.Revision;
@@ -54,9 +53,9 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
                 return;
             }
 
-            TreeDiff.CompareCommitsResult result = TreeDiff.compareCommits(repo, headOid, targetCommitOid);
-            Migration migration = new Migration(result.getChanges(), result.getTargetIndexEntries(), targetCommitOid);
-            migration.applyChanges(repo);
+            Migration migration = new Migration(headOid, targetCommitOid);
+            migration.validate();
+            migration.applyChanges();
             log.info("checkout done ref={} oid={}", ref, targetCommitOid);
         } catch (RevisionParseException e) {
             log.warn("checkout parse failed ref={}", ref, e);
