@@ -59,7 +59,6 @@ public final class Migration {
         planChanges();
         updateWorkspace();
         updateIndex();
-
     }
 
     /**

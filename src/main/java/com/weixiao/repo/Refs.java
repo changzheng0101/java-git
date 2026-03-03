@@ -41,6 +41,8 @@ public final class Refs {
 
     /**
      * 解析 HEAD，返回当前指向的 commit oid（symref 时读分支 ref，detached 时读 HEAD 内容）；若未设置则返回 null。
+     *
+     * @return HEAD对应的commitId
      */
     public String readHead() throws IOException {
         String content = getHeadContent();
@@ -93,6 +95,8 @@ public final class Refs {
     /**
      * 读取指定 ref 指向的 oid，不存在或无法读取时返回 null。
      * ref为branch name
+     *
+     * @return ref对应的commitId
      */
     public String readRef(String ref) throws IOException {
         if (ref == null || ref.isEmpty()) return null;
@@ -127,16 +131,26 @@ public final class Refs {
     }
 
     /**
+     * checkout 后更新 HEAD：若 target 为分支名则令 HEAD 指向该分支（symref）；否则令 HEAD 直接指向 commit（detached）。
      *
-     * @param target   要更新的目标 可能是分支名，如果分支名匹配不上，默认直接更新当前分支
-     * @param commitId 对应的commitId
+     * @param target   分支名或非分支（此时视为 checkout 到 commit，detached HEAD）
+     * @param commitId 目标 commit oid
      */
     public void updateHead(String target, String commitId) throws IOException {
         if (branchExists(target)) {
-            writeRef(REFS_HEADS + target, commitId);
+            writeHeadToBranch(target);
         } else {
             writeHeadOid(commitId);
         }
+    }
+
+    /**
+     * 将 HEAD 设为指向分支的 symref（ref: refs/heads/&lt;branchName&gt;）。
+     */
+    public void writeHeadToBranch(String branchName) throws IOException {
+        Path headFile = gitDir.resolve(HEAD);
+        Files.writeString(headFile, "ref: " + REFS_HEADS + branchName + "\n", StandardCharsets.UTF_8);
+        log.debug("writeHeadToBranch HEAD -> ref: {}", REFS_HEADS + branchName);
     }
 
 
