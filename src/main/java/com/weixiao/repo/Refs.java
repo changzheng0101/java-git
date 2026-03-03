@@ -42,16 +42,25 @@ public final class Refs {
      * 解析 HEAD，返回当前分支上的 commit oid；若未设置则返回 null。
      */
     public String readHead() throws IOException {
+        String ref = getHeadRef();
+        return ref != null ? readRef(ref) : null;
+    }
+
+    /**
+     * 返回 HEAD 指向的 ref（如 refs/heads/master）；若 HEAD 为 detached 或不存在则返回 null。
+     */
+    public String getHeadRef() throws IOException {
         Path headFile = gitDir.resolve(HEAD);
         if (!Files.exists(headFile)) {
-            log.debug("readHead: no HEAD file");
+            log.debug("getHeadRef: no HEAD file");
             return null;
         }
         String content = Files.readString(headFile, StandardCharsets.UTF_8).trim();
         Matcher m = HEAD_REF.matcher(content);
-        if (!m.matches()) return null;
-        String ref = m.group(1).trim();
-        return readRef(ref);
+        if (!m.matches()) {
+            return null;
+        }
+        return m.group(1).trim();
     }
 
     /**
@@ -76,6 +85,15 @@ public final class Refs {
         }
         Files.writeString(refPath, oid + "\n", StandardCharsets.UTF_8);
         log.debug("writeRef ref={} oid={}", ref, oid);
+    }
+
+    /**
+     * 将当前分支（HEAD 指向的 ref）更新为给定 commit oid；若 HEAD 未指向分支则更新 refs/heads/master。
+     */
+    public void updateCurrentBranch(String oid) throws IOException {
+        String headRef = getHeadRef();
+        String ref = (headRef != null && headRef.startsWith(REFS_HEADS)) ? headRef : REFS_HEADS_MASTER;
+        writeRef(ref, oid);
     }
 
     /**

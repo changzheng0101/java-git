@@ -37,7 +37,7 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
     private int exitCode = 0;
 
     /**
-     * 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新 refs/heads/master；index 为空时失败。
+     * 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新当前分支（HEAD 指向的 ref）；index 为空时失败。
      */
     @Override
     public void run() {
@@ -72,7 +72,7 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
             String commitOid = repo.getDatabase().store(commit);
             log.debug("stored commit oid={}", commitOid);
 
-            repo.getRefs().updateMaster(commitOid);
+            repo.getRefs().updateCurrentBranch(commitOid);
             log.info("commit created oid={} tree={}", commitOid, treeOid);
             System.out.println("[" + commitOid.substring(0, 7) + "] " + (message != null && message.contains("\n") ? message.substring(0, message.indexOf('\n')) : message));
         } catch (IOException e) {
