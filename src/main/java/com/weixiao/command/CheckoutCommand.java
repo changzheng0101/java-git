@@ -48,21 +48,16 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
         }
 
         try {
-            Revision rev = Revision.parse(ref);
-            String targetCommitOid = rev.getCommitId(repo);
             String headOid = repo.getRefs().readHead();
             boolean isBranch = repo.getRefs().branchExists(ref);
+            String targetCommitOid = Revision.parse(ref).getCommitId(repo);
+          
 
-            if (targetCommitOid.equals(headOid)) {
-                if (isBranch) {
-                    String currentBranch = currentBranchName(repo);
-                    if (ref.equals(currentBranch)) {
-                        System.out.println("Already on '" + ref + "'");
-                        log.info("already on branch {}", ref);
-                        return;
-                    }
-                } else {
-                    log.info("already at {}", targetCommitOid);
+            if (isBranch && targetCommitOid.equals(headOid)) {
+                String currentBranch = currentBranchName();
+                if (ref.equals(currentBranch)) {
+                    System.out.println("Already on '" + ref + "'");
+                    log.info("already on branch {}", ref);
                     return;
                 }
             }
@@ -99,8 +94,8 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
         return exitCode;
     }
 
-    private static String currentBranchName(Repository repo) throws IOException {
-        String headRef = repo.getRefs().getHeadRef();
+    private static String currentBranchName() throws IOException {
+        String headRef = Repository.INSTANCE.getRefs().getHeadRef();
         if (headRef != null && headRef.startsWith(Refs.REFS_HEADS)) {
             return headRef.substring(Refs.REFS_HEADS.length());
         }

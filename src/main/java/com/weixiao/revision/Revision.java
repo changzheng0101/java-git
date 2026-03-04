@@ -59,17 +59,19 @@ public sealed interface Revision {
         public String getCommitId(Repository repo) throws IOException {
             Refs refs = repo.getRefs();
             ObjectDatabase db = repo.getDatabase();
-            String target = "HEAD".equals(name) ? refs.readHead() : refs.readRef(name);
+            String target = "HEAD".equals(name) ? refs.readHead() : refs.readRef("refs/heads/" + name);
 
+            if (target != null) {
+                return target;
+            }
 
-            if (target == null) {
-                List<String> candidates = db.prefixMatch(name);
-                if (candidates.size() == 1) {
-                    return candidates.get(0);
-                }
-                if (candidates.size() > 1) {
-                    throw ambiguousRevisionException(name, candidates, db);
-                }
+            List<String> candidates = db.prefixMatch(name);
+
+            if (candidates.size() == 1) {
+                return candidates.get(0);
+            }
+            if (candidates.size() > 1) {
+                throw ambiguousRevisionException(name, candidates, db);
             }
 
             throw new RevisionParseException("revision not found: " + name);

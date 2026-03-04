@@ -1,6 +1,6 @@
 package com.weixiao.repo;
 
-import com.weixiao.revision.Revision;
+import com.weixiao.utils.Constants;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
@@ -15,6 +15,8 @@ import java.util.regex.Pattern;
 
 /**
  * 引用：读取/写入 HEAD、refs/heads/*，分支名校验（与 Git check-ref-format 一致）。
+ * 设计原则：
+ * string 类型的 ref 应该为 refs/heads/master之类的全路径
  */
 @Data
 @NoArgsConstructor
@@ -27,7 +29,6 @@ public final class Refs {
      * refs/heads/ 前缀，分支完整 ref 为 refs/heads/&lt;name&gt;
      */
     public static final String REFS_HEADS = "refs/heads/";
-    private static final String REFS_HEADS_MASTER = REFS_HEADS + "master";
     private static final Pattern HEAD_REF = Pattern.compile("ref:\\s*(.+)");
 
     private static final String DOUBLE_DOT = "..";
@@ -220,7 +221,7 @@ public final class Refs {
      * 创建分支：将 refs/heads/&lt;name&gt; 指向 oid。调用前需已校验 name 合法且分支不存在。
      */
     public void createBranch(String name, String oid) throws IOException {
-        writeRef(REFS_HEADS + name, oid);
+        writeRef(REFS_HEADS + Constants.FILE_SEPARATOR + name, oid);
         log.debug("createBranch name={} oid={}", name, oid);
     }
 }
