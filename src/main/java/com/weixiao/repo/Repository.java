@@ -74,7 +74,7 @@ public final class Repository {
     private void init(Path root) {
         this.root = root.toAbsolutePath().normalize();
         this.gitDir = this.root.resolve(GIT_DIR);
-        this.database.setGitDir(this.gitDir);
+        this.database.setObjectsDir(this.gitDir.resolve("objects"));
         this.refs.setGitDir(this.gitDir);
         this.workspace.setRoot(this.root);
         this.index.setGitDir(this.gitDir);

@@ -36,14 +36,10 @@ public final class ObjectDatabase {
 
     private static final Logger log = LoggerFactory.getLogger(ObjectDatabase.class);
 
-    private static final String OBJECTS_DIR = "objects";
-    private Path gitDir;
+    private Path objectsDir;
 
-    /**
-     * 以 .git 目录为基准，对象存储路径为 .git/objects。
-     */
-    public ObjectDatabase(Path gitDir) {
-        this.gitDir = gitDir.resolve(OBJECTS_DIR);
+    public ObjectDatabase(Path objectsDir) {
+        this.objectsDir = objectsDir;
     }
 
     /**
@@ -164,18 +160,18 @@ public final class ObjectDatabase {
         if (!prefix.matches("[0-9a-f]+")) {
             return Collections.emptyList();
         }
-        if (!Files.isDirectory(gitDir)) {
+        if (!Files.isDirectory(objectsDir)) {
             return Collections.emptyList();
         }
         List<String> oids = new ArrayList<>();
         if (prefix.length() == 1) {
-            try (Stream<Path> subdirs = Files.list(gitDir)) {
+            try (Stream<Path> subdirs = Files.list(objectsDir)) {
                 subdirs.filter(p -> Files.isDirectory(p))
                         .filter(p -> p.getFileName().toString().startsWith(prefix))
                         .forEach(subdir -> collectOidsInDir(oids, subdir, ""));
             }
         } else {
-            Path subdir = gitDir.resolve(prefix.substring(0, 2));
+            Path subdir = objectsDir.resolve(prefix.substring(0, 2));
             if (Files.isDirectory(subdir)) {
                 String suffix = prefix.length() > 2 ? prefix.substring(2) : "";
                 collectOidsInDir(oids, subdir, suffix);
@@ -212,7 +208,7 @@ public final class ObjectDatabase {
      */
     private Path objectPath(String oid) {
         if (oid == null || oid.length() < 2) throw new IllegalArgumentException("invalid oid: " + oid);
-        return gitDir.resolve(oid.substring(0, 2)).resolve(oid.substring(2));
+        return objectsDir.resolve(oid.substring(0, 2)).resolve(oid.substring(2));
     }
 
     /**

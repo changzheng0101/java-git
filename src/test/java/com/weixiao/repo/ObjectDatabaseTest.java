@@ -24,9 +24,9 @@ class ObjectDatabaseTest {
     @Test
     @DisplayName("store Blob 后 load 得到相同内容")
     void storeAndLoadBlob(@TempDir Path dir) throws Exception {
-        Path gitDir = dir.resolve(".git").resolve("objects");
-        Files.createDirectories(gitDir.getParent().resolve("refs").resolve("heads"));
-        ObjectDatabase db = new ObjectDatabase(dir.resolve(".git"));
+        Path gitDir = dir.resolve(".git");
+        Files.createDirectories(gitDir.resolve("refs").resolve("heads"));
+        ObjectDatabase db = new ObjectDatabase(gitDir.resolve("objects"));
         Blob blob = new Blob("hello".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String oid = db.store(blob);
         assertThat(oid).hasSize(40);
@@ -46,7 +46,7 @@ class ObjectDatabaseTest {
         Path gitDir = dir.resolve(".git");
         Files.createDirectories(gitDir.resolve("objects"));
         Files.createDirectories(gitDir.resolve("refs").resolve("heads"));
-        ObjectDatabase db = new ObjectDatabase(gitDir);
+        ObjectDatabase db = new ObjectDatabase(gitDir.resolve("objects"));
         Blob b = new Blob("x".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String blobOid = db.store(b);
         Tree tree = new Tree(List.of(new TreeEntry("100644", "a.txt", blobOid)));
@@ -66,7 +66,7 @@ class ObjectDatabaseTest {
         Path gitDir = dir.resolve(".git");
         Files.createDirectories(gitDir.resolve("objects"));
         Files.createDirectories(gitDir.resolve("refs").resolve("heads"));
-        ObjectDatabase db = new ObjectDatabase(gitDir);
+        ObjectDatabase db = new ObjectDatabase(gitDir.resolve("objects"));
         Blob b = new Blob("x".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String blobOid = db.store(b);
         Tree tree = new Tree(List.of(new TreeEntry("100644", "f", blobOid)));
