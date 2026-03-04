@@ -24,12 +24,12 @@ public final class Refs {
 
     private static final Logger log = LoggerFactory.getLogger(Refs.class);
 
-    private static final String HEAD = "HEAD";
+    private static final SysRef HEAD_REF = new SysRef("HEAD");
     /**
      * refs/heads/ 前缀，分支完整 ref 为 refs/heads/&lt;name&gt;
      */
     public static final String REFS_HEADS = "refs/heads/";
-    private static final Pattern HEAD_REF = Pattern.compile("ref:\\s*(.+)");
+    private static final Pattern HEAD_REF_PATTERN = Pattern.compile("ref:\\s*(.+)");
 
     private static final String DOUBLE_DOT = "..";
     private static final String DOT_LOCK = ".lock";
@@ -50,9 +50,9 @@ public final class Refs {
         if (content == null || content.isEmpty()) {
             return null;
         }
-        Matcher m = HEAD_REF.matcher(content);
+        Matcher m = HEAD_REF_PATTERN.matcher(content);
         if (m.matches()) {
-            return readRef(m.group(1).trim());
+            return readRef(new SysRef(m.group(1).trim()));
         }
         return content;
     }
@@ -65,7 +65,7 @@ public final class Refs {
         if (content == null) {
             return null;
         }
-        Matcher m = HEAD_REF.matcher(content);
+        Matcher m = HEAD_REF_PATTERN.matcher(content);
         if (!m.matches()) {
             return null;
         }
@@ -76,7 +76,7 @@ public final class Refs {
      * 读取 HEAD 文件原始内容（trim 后）；不存在则返回 null。
      */
     private String getHeadContent() throws IOException {
-        Path headFile = gitDir.resolve(HEAD);
+        Path headFile = gitDir.resolve(HEAD_REF.getPath());
         if (!Files.exists(headFile)) {
             log.debug("getHeadContent: no HEAD file");
             return null;
@@ -88,7 +88,7 @@ public final class Refs {
      * 将 HEAD 直接指向 commit oid（detached HEAD）。用于在 detached 状态下提交时只移动 HEAD、不更新任何分支。
      */
     public void writeHeadOid(String oid) throws IOException {
-        Path headFile = gitDir.resolve(HEAD);
+        Path headFile = gitDir.resolve(HEAD_REF.getPath());
         Files.writeString(headFile, oid + "\n", StandardCharsets.UTF_8);
         log.debug("writeHeadOid detached HEAD -> {}", oid);
     }
@@ -99,24 +99,39 @@ public final class Refs {
      *
      * @return ref对应的commitId
      */
-    public String readRef(String ref) throws IOException {
-        if (ref == null || ref.isEmpty()) return null;
-        Path refPath = gitDir.resolve(ref);
-        if (!Files.exists(refPath)) return null;
+    public String readRef(SysRef ref) throws IOException {
+        if (ref == null) {
+            return null;
+        }
+        String path = ref.getPath();
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+        Path refPath = gitDir.resolve(path);
+        if (!Files.exists(refPath)) {
+            return null;
+        }
         return Files.readString(refPath, StandardCharsets.UTF_8).trim();
     }
 
     /**
      * 写入 ref 指向给定 oid，必要时创建父目录。
      */
-    public void writeRef(String ref, String oid) throws IOException {
-        Path refPath = gitDir.resolve(ref);
+    public void writeRef(SysRef ref, String oid) throws IOException {
+        if (ref == null) {
+            throw new IllegalArgumentException("ref must not be null");
+        }
+        String path = ref.getPath();
+        if (path == null || path.isEmpty()) {
+            throw new IllegalArgumentException("ref.path must not be empty");
+        }
+        Path refPath = gitDir.resolve(path);
         Path dir = refPath.getParent();
         if (dir != null && !Files.exists(dir)) {
             Files.createDirectories(dir);
         }
         Files.writeString(refPath, oid + "\n", StandardCharsets.UTF_8);
-        log.debug("writeRef ref={} oid={}", ref, oid);
+        log.debug("writeRef ref={} oid={}", path, oid);
     }
 
     /**
@@ -125,7 +140,7 @@ public final class Refs {
     public void updateCurrentBranch(String oid) throws IOException {
         String headRef = getHeadRef();
         if (headRef != null && headRef.startsWith(REFS_HEADS)) {
-            writeRef(headRef, oid);
+            writeRef(new SysRef(headRef), oid);
         } else {
             writeHeadOid(oid);
         }
@@ -149,7 +164,7 @@ public final class Refs {
      * 将 HEAD 设为指向分支的 symref（ref: refs/heads/&lt;branchName&gt;）。
      */
     public void writeHeadToBranch(String branchName) throws IOException {
-        Path headFile = gitDir.resolve(HEAD);
+        Path headFile = gitDir.resolve(HEAD_REF.getPath());
         Files.writeString(headFile, "ref: " + REFS_HEADS + branchName + "\n", StandardCharsets.UTF_8);
         log.debug("writeHeadToBranch HEAD -> ref: {}", REFS_HEADS + branchName);
     }
@@ -221,7 +236,7 @@ public final class Refs {
      * 创建分支：将 refs/heads/&lt;name&gt; 指向 oid。调用前需已校验 name 合法且分支不存在。
      */
     public void createBranch(String name, String oid) throws IOException {
-        writeRef(REFS_HEADS + Constants.FILE_SEPARATOR + name, oid);
+        writeRef(new SysRef(REFS_HEADS + Constants.FILE_SEPARATOR + name), oid);
         log.debug("createBranch name={} oid={}", name, oid);
     }
 }

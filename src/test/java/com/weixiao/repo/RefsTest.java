@@ -52,6 +52,6 @@ class RefsTest {
         assertThat(refs.branchExists("new")).isFalse();
         refs.createBranch("new", "b".repeat(40));
         assertThat(refs.branchExists("new")).isTrue();
-        assertThat(refs.readRef("refs/heads/new")).isEqualTo("b".repeat(40));
+        assertThat(refs.readRef(new SysRef("refs/heads/new"))).isEqualTo("b".repeat(40));
     }
 }

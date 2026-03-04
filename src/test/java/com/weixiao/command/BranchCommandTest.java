@@ -5,6 +5,7 @@ import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
+import com.weixiao.repo.SysRef;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -54,8 +55,9 @@ class BranchCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo");
         assertThat(result.getExitCode()).isEqualTo(0);
         Repository repo = Repository.find(tempDir);
-        assertThat(repo.getRefs().readRef(Refs.REFS_HEADS + "foo")).isNotNull();
-        assertThat(repo.getRefs().readRef(Refs.REFS_HEADS + "foo")).isEqualTo(repo.getRefs().readHead());
+        SysRef fooRef = new SysRef(Refs.REFS_HEADS + "foo");
+        assertThat(repo.getRefs().readRef(fooRef)).isNotNull();
+        assertThat(repo.getRefs().readRef(fooRef)).isEqualTo(repo.getRefs().readHead());
     }
 
     @Test
@@ -82,7 +84,7 @@ class BranchCommandTest {
         initRepoWithOneCommit(tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "feature/bar");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(Repository.find(tempDir).getRefs().readRef(Refs.REFS_HEADS + "feature/bar")).isNotNull();
+        assertThat(Repository.find(tempDir).getRefs().readRef(new SysRef(Refs.REFS_HEADS + "feature/bar"))).isNotNull();
     }
 
     @Test

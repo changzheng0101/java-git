@@ -5,6 +5,7 @@ import com.weixiao.obj.GitObject;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
+import com.weixiao.repo.SysRef;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -59,7 +60,9 @@ public sealed interface Revision {
         public String getCommitId(Repository repo) throws IOException {
             Refs refs = repo.getRefs();
             ObjectDatabase db = repo.getDatabase();
-            String target = "HEAD".equals(name) ? refs.readHead() : refs.readRef("refs/heads/" + name);
+            String target = "HEAD".equals(name)
+                    ? refs.readHead()
+                    : refs.readRef(new SysRef(Refs.REFS_HEADS + name));
 
             if (target != null) {
                 return target;
