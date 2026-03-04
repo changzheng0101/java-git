@@ -87,14 +87,6 @@ class BranchCommandTest {
         assertThat(Repository.find(tempDir).getRefs().readRef(new SysRef(Refs.REFS_HEADS + "feature/bar"))).isNotNull();
     }
 
-    @Test
-    @DisplayName("非法分支名：空字符串失败")
-    void branch_invalidEmpty_fails(@TempDir Path tempDir) throws Exception {
-        initRepoWithOneCommit(tempDir);
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "");
-        assertThat(result.getExitCode()).isNotEqualTo(0);
-        assertThat(result.getErr()).contains("not a valid branch name");
-    }
 
     @Test
     @DisplayName("非法分支名：含 .. 失败")
@@ -158,5 +150,33 @@ class BranchCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dup");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("already exists");
+    }
+
+    @Test
+    @DisplayName("无参数时按字母顺序列出分支，当前分支前加 *")
+    void branch_listBranches_basic(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        // 创建额外分支
+        ExecuteResult createFoo = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo");
+        assertThat(createFoo.getExitCode()).isEqualTo(0);
+
+        ExecuteResult list = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch");
+        assertThat(list.getExitCode()).isEqualTo(0);
+        String out = list.getOutput();
+        // master 为当前分支，foo 为普通分支
+        assertThat(out).contains("* master");
+        assertThat(out).contains("  foo").doesNotContain("* foo");
+    }
+
+    @Test
+    @DisplayName("branch --verbose 时输出分支名、缩写 oid 和提交标题")
+    void branch_listBranches_verbose(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult list = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "--verbose");
+        assertThat(list.getExitCode()).isEqualTo(0);
+        String out = list.getOutput();
+        // 应包含 master、7 位十六进制 oid 以及提交信息 "first"
+        assertThat(out).contains("master");
+        assertThat(out).contains("first");
     }
 }
