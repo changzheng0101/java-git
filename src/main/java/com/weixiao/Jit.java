@@ -7,6 +7,7 @@ import com.weixiao.command.CommitCommand;
 import com.weixiao.command.DiffCommand;
 import com.weixiao.command.InitCommand;
 import com.weixiao.command.StatusCommand;
+import com.weixiao.command.LogCommand;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
 
@@ -60,7 +61,8 @@ public class Jit implements Runnable {
                 .addSubcommand("status", new StatusCommand())
                 .addSubcommand("diff", new DiffCommand())
                 .addSubcommand("branch", new BranchCommand())
-                .addSubcommand("checkout", new CheckoutCommand());
+                .addSubcommand("checkout", new CheckoutCommand())
+                .addSubcommand("log", new LogCommand());
     }
 
     /**
