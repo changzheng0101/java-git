@@ -161,11 +161,11 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
         }
         Collections.sort(names);
 
-        String headRef = repo.getRefs().getHeadRef();
+        SysRef headRef = repo.getRefs().getHeadRef();
 
         for (String name : names) {
             String fullRefPath = Refs.REFS_HEADS + name;
-            boolean current = headRef != null && headRef.equals(fullRefPath);
+            boolean current = headRef != null && headRef.getPath().equals(fullRefPath);
             String prefix = current ? "*" : " ";
 
             if (!verbose) {

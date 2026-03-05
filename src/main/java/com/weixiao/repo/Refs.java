@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -61,7 +63,7 @@ public final class Refs {
     /**
      * 返回 HEAD 指向的 ref（如 refs/heads/master）；若 HEAD 为 detached（直接存 commit id）或不存在则返回 null。
      */
-    public String getHeadRef() throws IOException {
+    public SysRef getHeadRef() throws IOException {
         String content = getHeadContent();
         if (content == null) {
             return null;
@@ -70,7 +72,7 @@ public final class Refs {
         if (!m.matches()) {
             return null;
         }
-        return m.group(1).trim();
+        return new SysRef(m.group(1).trim());
     }
 
     /**
@@ -139,9 +141,9 @@ public final class Refs {
      * 提交后更新 HEAD：若 HEAD 为 symref（指向 refs/heads/xxx）则更新该分支 ref；若为 detached HEAD 则只将 HEAD 文件改为新 commit oid，不更新任何分支。
      */
     public void updateCurrentBranch(String oid) throws IOException {
-        String headRef = getHeadRef();
-        if (headRef != null && headRef.startsWith(REFS_HEADS)) {
-            writeRef(new SysRef(headRef), oid);
+        SysRef headRef = getHeadRef();
+        if (headRef != null && headRef.getPath().startsWith(REFS_HEADS)) {
+            writeRef(headRef, oid);
         } else {
             writeHeadOid(oid);
         }
@@ -231,6 +233,35 @@ public final class Refs {
     public boolean branchExists(String name) {
         Path refPath = gitDir.resolve(REFS_HEADS + name);
         return Files.exists(refPath);
+    }
+
+    /**
+     * 返回所有分支名到 commit oid 的映射（分支名为 refs/heads 下的相对路径，如 master、feature/bar）。
+     * 用于 log 等命令显示 (HEAD -&gt; master) 等。
+     */
+    public Map<String, String> getBranchNamesToOid() throws IOException {
+        Path headsDir = gitDir.resolve("refs").resolve("heads");
+        Map<String, String> result = new LinkedHashMap<>();
+        if (!Files.exists(headsDir)) {
+            return result;
+        }
+        try (Stream<Path> stream = Files.walk(headsDir)) {
+            stream.filter(Files::isRegularFile)
+                    .sorted()
+                    .forEach(p -> {
+                        String name = headsDir.relativize(p).toString().replace(Constants.FILE_SEPARATOR, "/");
+                        SysRef ref = new SysRef(REFS_HEADS + name);
+                        try {
+                            String oid = readRef(ref);
+                            if (oid != null && !oid.isEmpty()) {
+                                result.put(name, oid);
+                            }
+                        } catch (IOException e) {
+                            log.debug("skip ref {}: {}", name, e.getMessage());
+                        }
+                    });
+        }
+        return result;
     }
 
     /**

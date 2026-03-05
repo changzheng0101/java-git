@@ -97,5 +97,35 @@ class LogCommandTest {
         assertThat(noAbbrevResult.getExitCode()).isEqualTo(0);
         assertThat(noAbbrevResult.getOutput()).contains(head);
     }
+
+    @Test
+    @DisplayName("log 首行 commit 后显示 (HEAD -> master)")
+    void log_showsHeadAndBranch(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("(HEAD -> master)");
+    }
+
+    @Test
+    @DisplayName("log --oneline 行末也显示 (HEAD -> master)")
+    void log_oneline_showsHeadAndBranch(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "--oneline");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("(HEAD -> master)");
+    }
+
+    @Test
+    @DisplayName("多分支指向同一 commit 时 log 显示 HEAD -> 当前分支及另一分支")
+    void log_multipleBranchesAtSameCommit(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "--oneline");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        String out = result.getOutput();
+        assertThat(out).contains("(HEAD -> master");
+        assertThat(out).contains("dev)");
+    }
 }
 

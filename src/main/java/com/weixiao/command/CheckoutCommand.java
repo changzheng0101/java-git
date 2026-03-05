@@ -6,6 +6,7 @@ import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Migration;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
+import com.weixiao.repo.SysRef;
 import com.weixiao.revision.Revision;
 import com.weixiao.revision.RevisionParseException;
 import org.slf4j.Logger;
@@ -95,9 +96,9 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
     }
 
     private static String currentBranchName() throws IOException {
-        String headRef = Repository.INSTANCE.getRefs().getHeadRef();
-        if (headRef != null && headRef.startsWith(Refs.REFS_HEADS)) {
-            return headRef.substring(Refs.REFS_HEADS.length());
+        SysRef headRef = Repository.INSTANCE.getRefs().getHeadRef();
+        if (headRef != null && headRef.getPath().startsWith(Refs.REFS_HEADS)) {
+            return headRef.getPath().substring(Refs.REFS_HEADS.length());
         }
         return null;
     }
