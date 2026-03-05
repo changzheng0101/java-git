@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,7 +22,8 @@ import java.util.stream.Stream;
 /**
  * jit branch：
  * - 无参数：列出所有分支，按字母排序，当前分支前加 *；
- * - 有 NAME 参数：在当前 HEAD 上新建 refs/heads/&lt;name&gt;（分支名校验与 Git check-ref-format 一致）。
+ * - 有 NAME 参数：在当前 HEAD 上新建 refs/heads/&lt;name&gt;（分支名校验与 Git check-ref-format 一致）；
+ * - --delete/-d/--force/-D：删除分支（目前仅在 force=true 时真正删除）。
  */
 @Command(name = "branch", mixinStandardHelpOptions = true, description = "列出或创建分支")
 public class BranchCommand implements Runnable, IExitCodeGenerator {
@@ -36,8 +36,14 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
     @Option(names = {"-v", "--verbose"}, description = "显示每个分支指向的提交和标题行")
     private boolean verbose;
 
-    @Parameters(index = "0", arity = "0..1", paramLabel = "NAME", description = "新分支名称（省略则列出分支）")
-    private String branchName;
+    @Option(names = {"-d", "--delete"}, description = "删除分支（安全删除，当前实现需配合 --force 使用）")
+    private boolean delete;
+
+    @Option(names = {"--force", "-D"}, description = "强制删除分支")
+    private boolean force;
+
+    @Parameters(index = "0", arity = "0..*", paramLabel = "NAME", description = "分支名称（省略则列出分支）")
+    private List<String> branchNames;
 
     private int exitCode = 0;
 
@@ -45,7 +51,7 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
     public void run() {
         exitCode = 0;
         Path start = jit.getStartPath();
-        log.debug("branch start path={} name={}", start, branchName);
+        log.debug("branch start path={} names={}", start, branchNames);
 
         Repository repo = Repository.find(start);
         if (repo == null) {
@@ -56,11 +62,31 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
         }
 
         try {
-            if (branchName == null || branchName.isEmpty()) {
+            boolean deleteMode = delete || force;
+            List<String> names = branchNames != null ? branchNames : List.of();
+
+            if (deleteMode) {
+                if (names.isEmpty()) {
+                    System.err.println("fatal: branch name required");
+                    exitCode = 1;
+                    return;
+                }
+                deleteBranches(repo, names, force);
+                return;
+            }
+
+            if (names.isEmpty()) {
                 listBranches(repo);
                 return;
             }
 
+            if (names.size() > 1) {
+                System.err.println("fatal: too many branch names for creation");
+                exitCode = 1;
+                return;
+            }
+
+            String branchName = names.get(0);
             String invalid = Refs.validateBranchName(branchName);
             if (invalid != null) {
                 System.err.println("fatal: '" + branchName + "' is not a valid branch name: " + invalid);
@@ -90,6 +116,28 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
     @Override
     public int getExitCode() {
         return exitCode;
+    }
+
+    /**
+     * 删除一个或多个分支：当前实现只有在 force=true 时才真正删除。
+     */
+    private void deleteBranches(Repository repo, List<String> names, boolean forceDelete) throws IOException {
+        Refs refs = repo.getRefs();
+        for (String name : names) {
+            if (!forceDelete) {
+                System.err.println("error: branch '" + name + "' not deleted; use --force or -D to delete it");
+                exitCode = 1;
+                continue;
+            }
+            try {
+                String oid = refs.deleteBranch(name);
+                String abbrev = oid != null && oid.length() >= 7 ? oid.substring(0, 7) : oid;
+                System.out.println("Deleted branch " + name + " (" + abbrev + ")");
+            } catch (IOException e) {
+                System.err.println("error: " + e.getMessage());
+                exitCode = 1;
+            }
+        }
     }
 
     /**

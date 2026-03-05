@@ -179,4 +179,85 @@ class BranchCommandTest {
         assertThat(out).contains("master");
         assertThat(out).contains("first");
     }
+
+    // ---------- 删除分支 ----------
+
+    @Test
+    @DisplayName("branch -d 无分支名时失败并提示 branch name required")
+    void branch_delete_withoutName_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "--delete");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("branch name required");
+    }
+
+    @Test
+    @DisplayName("branch -d 无 --force 时不删除分支并提示使用 --force")
+    void branch_delete_withoutForce_doesNotDelete(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "toDelete");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "--delete", "toDelete");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not deleted").contains("--force");
+        assertThat(Repository.find(tempDir).getRefs().branchExists("toDelete")).isTrue();
+    }
+
+    @Test
+    @DisplayName("branch -d --force 成功删除并输出 Deleted branch ... (abbrev)")
+    void branch_delete_withForce_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "toDelete");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "--delete", "--force", "toDelete");
+        assertThat(result.getExitCode()).as("err: %s", result.getErr()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Deleted branch toDelete (");
+        assertThat(Repository.find(tempDir).getRefs().branchExists("toDelete")).isFalse();
+    }
+
+    @Test
+    @DisplayName("branch -D 等价于强制删除")
+    void branch_delete_withShortD_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "shortD");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "-D", "shortD");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Deleted branch shortD (");
+        assertThat(Repository.find(tempDir).getRefs().branchExists("shortD")).isFalse();
+    }
+
+    @Test
+    @DisplayName("删除不存在的分支时失败并提示 not found")
+    void branch_delete_nonexistent_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "-D", "nonexistent");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("not found");
+    }
+
+    @Test
+    @DisplayName("branch -D 可一次删除多个分支")
+    void branch_delete_multiple_withForce_succeeds(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "a");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "b");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "-D", "a", "b");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Deleted branch a (");
+        assertThat(result.getOutput()).contains("Deleted branch b (");
+        Repository repo = Repository.find(tempDir);
+        assertThat(repo.getRefs().branchExists("a")).isFalse();
+        assertThat(repo.getRefs().branchExists("b")).isFalse();
+    }
+
+    @Test
+    @DisplayName("删除带层级的分支后空目录被清理")
+    void branch_delete_nestedBranch_removesEmptyDir(@TempDir Path tempDir) throws Exception {
+        initRepoWithOneCommit(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "feature/bar");
+        Path headsFeature = tempDir.resolve(".git").resolve("refs").resolve("heads").resolve("feature");
+        assertThat(Files.exists(headsFeature)).isTrue();
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "-D", "feature/bar");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(Repository.find(tempDir).getRefs().branchExists("feature/bar")).isFalse();
+        assertThat(Files.exists(headsFeature)).isFalse();
+    }
 }

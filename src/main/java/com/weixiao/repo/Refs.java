@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * 引用：读取/写入 HEAD、refs/heads/*，分支名校验（与 Git check-ref-format 一致）。
@@ -238,5 +239,39 @@ public final class Refs {
     public void createBranch(String name, String oid) throws IOException {
         writeRef(new SysRef(REFS_HEADS + Constants.FILE_SEPARATOR + name), oid);
         log.debug("createBranch name={} oid={}", name, oid);
+    }
+
+    /**
+     * 删除分支：删除 refs/heads/&lt;name&gt; 指向的 ref，并在可能时清理空目录（在 .git/refs/heads 处停止）。
+     *
+     * @param name 分支名（不含 refs/heads/ 前缀）
+     * @return 被删除分支原来指向的 commit oid
+     * @throws IOException 当分支不存在或删除失败时抛出
+     */
+    public String deleteBranch(String name) throws IOException {
+        if (name == null || name.isEmpty()) {
+            throw new IOException("branch name is empty");
+        }
+        Path refPath = gitDir.resolve(REFS_HEADS + Constants.FILE_SEPARATOR + name);
+        if (!Files.exists(refPath)) {
+            throw new IOException("branch '" + name + "' not found.");
+        }
+        String oid = Files.readString(refPath, StandardCharsets.UTF_8).trim();
+        Files.delete(refPath);
+        log.debug("deleteBranch name={} oid={}", name, oid);
+
+        // 清理可能为空的父目录，在 .git/refs/heads 处停止
+        Path headsDir = gitDir.resolve("refs").resolve("heads");
+        Path parent = refPath.getParent();
+        while (parent != null && !parent.equals(headsDir)) {
+            try (Stream<Path> children = Files.list(parent)) {
+                if (children.findAny().isPresent()) {
+                    break;
+                }
+            }
+            Files.delete(parent);
+            parent = parent.getParent();
+        }
+        return oid;
     }
 }
