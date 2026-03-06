@@ -80,13 +80,16 @@ public final class Repository {
         this.index.setGitDir(this.gitDir);
     }
 
+    /** 未找到仓库时打印到 stderr 的提示。 */
+    public static final String FATAL_NOT_A_REPO = "fatal: not a jit repository (or any of the parent directories): .git";
+
     /**
-     * 从当前目录向上查找包含 .git 的目录作为仓库根；未找到返回 null。
-     * 找到时更新全局单例的属性并返回该实例，不创建新实例。
+     * 从 start 向上查找包含 .git 的目录作为仓库根；找到时更新全局单例并返回，未找到时打印 {@link #FATAL_NOT_A_REPO} 到 stderr 并返回 null。
      */
     public static Repository find(Path start) {
         Path resolved = resolveRoot(start);
         if (resolved == null) {
+            System.err.println(FATAL_NOT_A_REPO);
             return null;
         }
         INSTANCE.init(resolved);

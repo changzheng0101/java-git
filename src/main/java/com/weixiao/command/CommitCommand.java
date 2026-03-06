@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * jit commit - 将暂存区（index）中的文件提交到仓库。
@@ -46,9 +45,6 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
         log.debug("commit start path={}", start);
         Repository repo = Repository.find(start);
         if (repo == null) {
-            log.debug("no repo found from {}", start);
-            log.info("commit aborted: not a jit repository");
-            System.err.println("fatal: not a jit repository (or any of the parent directories): .git");
             exitCode = 1;
             return;
         }

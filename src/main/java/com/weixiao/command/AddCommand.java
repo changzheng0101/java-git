@@ -42,9 +42,6 @@ public class AddCommand implements Runnable, IExitCodeGenerator {
 
         Repository repo = Repository.find(start);
         if (repo == null) {
-            log.debug("no repo found from {}", start);
-            log.info("add aborted: not a jit repository");
-            System.err.println("fatal: not a jit repository (or any of the parent directories): .git");
             exitCode = 1;
             return;
         }

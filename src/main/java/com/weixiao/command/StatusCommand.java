@@ -35,8 +35,6 @@ public class StatusCommand implements Runnable, IExitCodeGenerator {
 
         Repository repo = Repository.find(start);
         if (repo == null) {
-            log.debug("no repo found from {}", start);
-            System.err.println("fatal: not a jit repository (or any of the parent directories): .git");
             exitCode = 1;
             return;
         }

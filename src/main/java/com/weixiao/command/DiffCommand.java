@@ -55,7 +55,6 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
         Path start = jit.getStartPath();
         Repository repo = Repository.find(start);
         if (repo == null) {
-            System.err.println("fatal: not a jit repository (or any of the parent directories): .git");
             exitCode = 1;
             return;
         }
