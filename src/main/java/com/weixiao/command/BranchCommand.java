@@ -1,6 +1,5 @@
 package com.weixiao.command;
 
-import com.weixiao.Jit;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Refs;
@@ -14,7 +13,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -26,12 +27,11 @@ import java.util.stream.Stream;
  * - --delete/-d/--force/-D：删除分支（目前仅在 force=true 时真正删除）。
  */
 @Command(name = "branch", mixinStandardHelpOptions = true, description = "列出或创建分支")
-public class BranchCommand implements Runnable, IExitCodeGenerator {
+public class BranchCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(BranchCommand.class);
 
-    @ParentCommand
-    private Jit jit;
+    private static final String BRANCH_NAMES_SEP = "\n";
 
     @Option(names = {"-v", "--verbose"}, description = "显示每个分支指向的提交和标题行")
     private boolean verbose;
@@ -45,23 +45,32 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
     @Parameters(index = "0", arity = "0..*", paramLabel = "NAME", description = "分支名称（省略则列出分支）")
     private List<String> branchNames;
 
-    private int exitCode = 0;
+    @Override
+    protected void initParams() {
+        params = new LinkedHashMap<>();
+        if (verbose) {
+            params.put("verbose", "");
+        }
+        if (delete) {
+            params.put("delete", "");
+        }
+        if (force) {
+            params.put("force", "");
+        }
+        if (branchNames != null && !branchNames.isEmpty()) {
+            params.put("branchNames", String.join(BRANCH_NAMES_SEP, branchNames));
+        }
+    }
 
     @Override
-    public void run() {
-        exitCode = 0;
-        Path start = jit.getStartPath();
-        log.debug("branch start path={} names={}", start, branchNames);
-
-        Repository repo = Repository.find(start);
-        if (repo == null) {
-            exitCode = 1;
-            return;
-        }
-
+    protected void doRun() {
+        log.debug("branch start path={} names={}", getStartPath(), get("branchNames"));
         try {
-            boolean deleteMode = delete || force;
-            List<String> names = branchNames != null ? branchNames : List.of();
+            boolean deleteMode = isSet("delete") || isSet("force");
+            String branchNamesStr = get("branchNames");
+            List<String> names = branchNamesStr == null || branchNamesStr.isEmpty()
+                    ? Collections.emptyList()
+                    : Arrays.asList(branchNamesStr.split(BRANCH_NAMES_SEP));
 
             if (deleteMode) {
                 if (names.isEmpty()) {
@@ -69,7 +78,7 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
                     exitCode = 1;
                     return;
                 }
-                deleteBranches(repo, names, force);
+                deleteBranches(repo, names, isSet("force"));
                 return;
             }
 
@@ -109,11 +118,6 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
-    }
-
-    @Override
-    public int getExitCode() {
-        return exitCode;
     }
 
     /**
@@ -166,7 +170,7 @@ public class BranchCommand implements Runnable, IExitCodeGenerator {
             boolean current = headRef != null && headRef.getPath().equals(fullRefPath);
             String prefix = current ? "*" : " ";
 
-            if (!verbose) {
+            if (!isSet("verbose")) {
                 System.out.println(prefix + " " + name);
             } else {
                 SysRef ref = new SysRef(fullRefPath);

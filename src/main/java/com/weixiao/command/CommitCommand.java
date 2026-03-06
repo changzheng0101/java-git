@@ -1,6 +1,5 @@
 package com.weixiao.command;
 
-import com.weixiao.Jit;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
@@ -14,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
@@ -23,31 +23,27 @@ import java.util.Set;
  * 当前仅支持 -m 指定提交信息（不打开编辑器）。
  */
 @Command(name = "commit", mixinStandardHelpOptions = true, description = "提交变更到仓库")
-public class CommitCommand implements Runnable, IExitCodeGenerator {
+public class CommitCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(CommitCommand.class);
-
-    @ParentCommand
-    private Jit jit;
 
     @Option(names = {"-m", "--message"}, required = true, description = "提交信息")
     private String message;
 
-    private int exitCode = 0;
+    @Override
+    protected void initParams() {
+        params = new LinkedHashMap<>();
+        if (message != null) {
+            params.put("message", message);
+        }
+    }
 
     /**
      * 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新当前分支（HEAD 指向的 ref）；index 为空时失败。
      */
     @Override
-    public void run() {
-        exitCode = 0;
-        Path start = jit.getStartPath();
-        log.debug("commit start path={}", start);
-        Repository repo = Repository.find(start);
-        if (repo == null) {
-            exitCode = 1;
-            return;
-        }
+    protected void doRun() {
+        log.debug("commit start path={}", getStartPath());
         log.debug("repo root={}", repo.getRoot());
 
         try {
@@ -64,13 +60,14 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
             String parentOid = repo.getRefs().readHead();
             log.debug("parent oid={}", parentOid);
             String author = formatAuthor();
-            Commit commit = new Commit(treeOid, parentOid, author, author, message);
+            String msg = get("message");
+            Commit commit = new Commit(treeOid, parentOid, author, author, msg);
             String commitOid = repo.getDatabase().store(commit);
             log.debug("stored commit oid={}", commitOid);
 
             repo.getRefs().updateCurrentBranch(commitOid);
             log.info("commit created oid={} tree={}", commitOid, treeOid);
-            System.out.println("[" + commitOid.substring(0, 7) + "] " + (message != null && message.contains("\n") ? message.substring(0, message.indexOf('\n')) : message));
+            System.out.println("[" + commitOid.substring(0, 7) + "] " + (msg != null && msg.contains("\n") ? msg.substring(0, msg.indexOf('\n')) : msg));
         } catch (IOException e) {
             log.error("commit failed", e);
             System.err.println("fatal: " + e.getMessage());
@@ -124,11 +121,4 @@ public class CommitCommand implements Runnable, IExitCodeGenerator {
         return user + " <" + user + "@local> " + sec + " +0000";
     }
 
-    /**
-     * 返回本命令的退出码（0 成功，1 失败）。
-     */
-    @Override
-    public int getExitCode() {
-        return exitCode;
-    }
 }

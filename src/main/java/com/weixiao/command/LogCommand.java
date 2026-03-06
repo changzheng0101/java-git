@@ -1,6 +1,5 @@
 package com.weixiao.command;
 
-import com.weixiao.Jit;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Refs;
@@ -12,8 +11,8 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +21,7 @@ import java.util.Map;
  * 当前实现：从 HEAD 开始沿 parent 链向后遍历，每次读取并输出一个 commit（流式输出，不缓存完整历史）。
  */
 @Command(name = "log", mixinStandardHelpOptions = true, description = "显示提交历史")
-public class LogCommand implements Runnable, IExitCodeGenerator {
+public class LogCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(LogCommand.class);
 
@@ -39,9 +38,6 @@ public class LogCommand implements Runnable, IExitCodeGenerator {
         }
     }
 
-    @ParentCommand
-    private Jit jit;
-
     @Option(names = {"--abbrev-commit"}, description = "使用缩写的提交 ID（默认 7 位）")
     private boolean abbrevCommit;
 
@@ -51,20 +47,23 @@ public class LogCommand implements Runnable, IExitCodeGenerator {
     @Option(names = {"--oneline"}, description = "每个提交一行：<abbrev-commit> <title line>")
     private boolean oneline;
 
-    private int exitCode = 0;
+    @Override
+    protected void initParams() {
+        params = new LinkedHashMap<>();
+        if (abbrevCommit) {
+            params.put("abbrevCommit", "");
+        }
+        if (noAbbrevCommit) {
+            params.put("noAbbrevCommit", "");
+        }
+        if (oneline) {
+            params.put("oneline", "");
+        }
+    }
 
     @Override
-    public void run() {
-        exitCode = 0;
-        Path start = jit.getStartPath();
-        log.debug("log start path={}", start);
-
-        Repository repo = Repository.find(start);
-        if (repo == null) {
-            exitCode = 1;
-            return;
-        }
-
+    protected void doRun() {
+        log.debug("log start path={}", getStartPath());
         try {
             String headOid = repo.getRefs().readHead();
             if (headOid == null || headOid.isEmpty()) {
@@ -86,16 +85,11 @@ public class LogCommand implements Runnable, IExitCodeGenerator {
         }
     }
 
-    @Override
-    public int getExitCode() {
-        return exitCode;
-    }
-
     /**
-     * 从给定 oid 开始沿 parent 链遍历提交，每次输出一个 commit。格式相关标志（abbrev、oneline）直接使用本命令成员变量。
+     * 从给定 oid 开始沿 parent 链遍历提交，每次输出一个 commit。格式相关标志从 params 读取。
      */
     private void walkCommits(String startOid, LogRefInfo refInfo) throws IOException {
-        boolean useAbbrev = oneline || (abbrevCommit && !noAbbrevCommit);
+        boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
         String oid = startOid;
         while (oid != null) {
             GitObject obj = Repository.INSTANCE.getDatabase().load(oid);
@@ -139,7 +133,7 @@ public class LogCommand implements Runnable, IExitCodeGenerator {
 
     private void printCommit(String oid, Commit commit, boolean abbrev, String refsStr) {
         String id = abbrev && oid != null && oid.length() > 7 ? oid.substring(0, 7) : oid;
-        if (oneline) {
+        if (isSet("oneline")) {
             String title = firstLine(commit.getMessage());
             System.out.println(Color.yellow(id) + refsStr + " " + title);
         } else {

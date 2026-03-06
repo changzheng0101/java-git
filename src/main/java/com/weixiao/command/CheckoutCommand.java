@@ -1,6 +1,5 @@
 package com.weixiao.command;
 
-import com.weixiao.Jit;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Migration;
@@ -14,7 +13,7 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.nio.file.Path;
+import java.util.LinkedHashMap;
 
 /**
  * jit checkout - 将工作区和暂存区切换到指定 commit（或分支指向的 commit）。
@@ -22,41 +21,35 @@ import java.nio.file.Path;
  */
 @Command(name = "checkout", mixinStandardHelpOptions = true,
         description = "切换到指定 commit 或分支（更新工作区与暂存区）")
-public class CheckoutCommand implements Runnable, IExitCodeGenerator {
+public class CheckoutCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(CheckoutCommand.class);
-
-    @ParentCommand
-    private Jit jit;
 
     @Parameters(index = "0", arity = "1", paramLabel = "REF", description = "分支名或 commit id")
     private String ref;
 
-    private int exitCode = 0;
+    @Override
+    protected void initParams() {
+        params = new LinkedHashMap<>();
+        if (ref != null) {
+            params.put("ref", ref);
+        }
+    }
 
     @Override
-    public void run() {
-        exitCode = 0;
-        Path start = jit.getStartPath();
-        log.debug("checkout start path={} ref={}", start, ref);
-
-        Repository repo = Repository.find(start);
-        if (repo == null) {
-            exitCode = 1;
-            return;
-        }
-
+    protected void doRun() {
+        String refVal = get("ref");
+        log.debug("checkout start path={} ref={}", getStartPath(), refVal);
         try {
             String headOid = repo.getRefs().readHead();
-            boolean isBranch = repo.getRefs().branchExists(ref);
-            String targetCommitOid = Revision.parse(ref).getCommitId(repo);
-          
+            boolean isBranch = repo.getRefs().branchExists(refVal);
+            String targetCommitOid = Revision.parse(refVal).getCommitId(repo);
 
             if (isBranch && targetCommitOid.equals(headOid)) {
                 String currentBranch = currentBranchName();
-                if (ref.equals(currentBranch)) {
-                    System.out.println("Already on '" + ref + "'");
-                    log.info("already on branch {}", ref);
+                if (refVal.equals(currentBranch)) {
+                    System.out.println("Already on '" + refVal + "'");
+                    log.info("already on branch {}", refVal);
                     return;
                 }
             }
@@ -67,18 +60,18 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
                 migration.applyChanges();
             }
 
-            repo.getRefs().updateHead(ref, targetCommitOid);
+            repo.getRefs().updateHead(refVal, targetCommitOid);
 
             if (isBranch) {
-                System.out.println("Switched to branch '" + ref + "'");
+                System.out.println("Switched to branch '" + refVal + "'");
             } else {
                 String subject = getCommitShortMessage(repo, targetCommitOid);
                 String abbrev = targetCommitOid.length() >= 7 ? targetCommitOid.substring(0, 7) : targetCommitOid;
                 System.out.println("HEAD is now at " + abbrev + " " + subject);
             }
-            log.info("checkout done ref={} oid={}", ref, targetCommitOid);
+            log.info("checkout done ref={} oid={}", refVal, targetCommitOid);
         } catch (RevisionParseException e) {
-            log.warn("checkout parse failed ref={}", ref, e);
+            log.warn("checkout parse failed ref={}", refVal, e);
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         } catch (IOException e) {
@@ -86,11 +79,6 @@ public class CheckoutCommand implements Runnable, IExitCodeGenerator {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
-    }
-
-    @Override
-    public int getExitCode() {
-        return exitCode;
     }
 
     private static String currentBranchName() throws IOException {

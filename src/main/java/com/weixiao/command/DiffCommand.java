@@ -1,7 +1,7 @@
 package com.weixiao.command;
 
-import com.weixiao.Jit;
 import com.weixiao.model.DiffSide;
+import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
@@ -15,7 +15,13 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * jit diff - 显示 index 与 workspace 或 index 与 HEAD 的差异。
@@ -23,7 +29,7 @@ import java.util.*;
  * --cached / --staged：index vs HEAD。
  */
 @Command(name = "diff", mixinStandardHelpOptions = true, description = "显示工作区与暂存区或暂存区与 HEAD 的差异")
-public class DiffCommand implements Runnable, IExitCodeGenerator {
+public class DiffCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(DiffCommand.class);
     private static final String DEV_NULL = "/dev/null";
@@ -31,38 +37,37 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
     private static final String EMPTY_CONTENT = "";
     public static final int CONTEXT_LINES = 3; // Git 默认上下文行数
 
-
-    @ParentCommand
-    private Jit jit;
-
     @Option(names = {"--cached", "--staged"}, description = "对比 index 与 HEAD（暂存区与最近提交）")
     private boolean cached;
 
     @Option(names = {"--no-color"}, description = "关闭彩色输出")
     private boolean noColor;
 
-    private int exitCode = 0;
+    @Override
+    protected void initParams() {
+        params = new LinkedHashMap<>();
+        if (cached) {
+            params.put("cached", "");
+        }
+        if (noColor) {
+            params.put("noColor", "");
+        }
+    }
 
     /** 是否使用颜色（与 Git 一致：默认在 TTY 下开启，--no-color 关闭） */
     private boolean useColor() {
-        if (noColor) return false;
+        if (isSet("noColor")) {
+            return false;
+        }
         return System.console() != null;
     }
 
     @Override
-    public void run() {
-        exitCode = 0;
-        Path start = jit.getStartPath();
-        Repository repo = Repository.find(start);
-        if (repo == null) {
-            exitCode = 1;
-            return;
-        }
-
+    protected void doRun() {
         try {
             repo.getIndex().load();
             StatusResult status = repo.getStatus();
-            if (cached) {
+            if (isSet("cached")) {
                 diffHeadIndex(repo, status);
             } else {
                 diffIndexWorkspace(repo, status);
@@ -143,7 +148,7 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
 
     private static String blobContent(Repository repo, String oid) throws IOException {
         if (oid == null) return "";
-        var raw = repo.getDatabase().load(oid);
+        GitObject raw = repo.getDatabase().load(oid);
         if (!"blob".equals(raw.getType())) return "";
         return new String(raw.toBytes(), StandardCharsets.UTF_8);
     }
@@ -311,10 +316,5 @@ public class DiffCommand implements Runnable, IExitCodeGenerator {
             }
         }
         return n;
-    }
-
-    @Override
-    public int getExitCode() {
-        return exitCode;
     }
 }
