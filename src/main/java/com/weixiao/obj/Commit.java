@@ -3,6 +3,10 @@ package com.weixiao.obj;
 import lombok.Getter;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 /**
  * Git commit 对象：tree、author、committer、message。
@@ -67,6 +71,48 @@ public final class Commit implements GitObject {
             throw new IllegalArgumentException("invalid commit: missing tree/author/committer");
         }
         return new Commit(treeOid, parentOid, author, committer, message);
+    }
+
+    /**
+     * 从 author 字符串解析出 "Name &lt;email&gt;" 部分（不含 timestamp 和 timezone）。
+     * 格式：Name &lt;email&gt; 1234567890 +0000
+     */
+    public static String formatAuthorNameEmail(String author) {
+        if (author == null || author.isEmpty()) {
+            return "";
+        }
+        String[] parts = author.split("\\s+");
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].matches("\\d{9,}") && i > 0) {
+                return String.join(" ", java.util.Arrays.copyOfRange(parts, 0, i));
+            }
+        }
+        return author;
+    }
+
+    /**
+     * 从 author 字符串解析并格式化为 Git log 风格的日期。
+     * 格式：Mon Jan 15 12:00:00 2024 +0000
+     */
+    public static String formatAuthorDate(String author) {
+        if (author == null || author.isEmpty()) {
+            return "";
+        }
+        String[] parts = author.split("\\s+");
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].matches("\\d{9,}") && i + 1 < parts.length) {
+                try {
+                    long ts = Long.parseLong(parts[i]);
+                    String tz = parts[i + 1];
+                    ZoneOffset offset = ZoneOffset.of(tz);
+                    return Instant.ofEpochSecond(ts).atOffset(offset)
+                            .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss yyyy XX", Locale.US));
+                } catch (Exception ignored) {
+                    return "";
+                }
+            }
+        }
+        return "";
     }
 
     /**

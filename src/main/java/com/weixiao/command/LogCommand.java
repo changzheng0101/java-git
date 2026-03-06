@@ -135,9 +135,10 @@ public class LogCommand extends BaseCommand {
             System.out.println(Color.yellow(id) + refsStr + " " + title);
         } else {
             System.out.println("commit " + Color.yellow(id) + refsStr);
+            System.out.println("Author: " + Commit.formatAuthorNameEmail(commit.getAuthor()));
+            System.out.println("Date:   " + Commit.formatAuthorDate(commit.getAuthor()));
             System.out.println();
-            System.out.println(commit.getMessage());
-            System.out.println();
+            System.out.println(Commit.firstLine(commit.getMessage()));
         }
     }
 
