@@ -1,11 +1,8 @@
 package com.weixiao.command;
 
-import com.weixiao.obj.Commit;
-import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Migration;
-import com.weixiao.repo.Refs;
+import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
-import com.weixiao.repo.SysRef;
 import com.weixiao.revision.Revision;
 import com.weixiao.revision.RevisionParseException;
 import org.slf4j.Logger;
@@ -46,7 +43,7 @@ public class CheckoutCommand extends BaseCommand {
             String targetCommitOid = Revision.parse(refVal).getCommitId(repo);
 
             if (isBranch && targetCommitOid.equals(headOid)) {
-                String currentBranch = currentBranchName();
+                String currentBranch = repo.getRefs().getCurrentBranchName();
                 if (refVal.equals(currentBranch)) {
                     System.out.println("Already on '" + refVal + "'");
                     log.info("already on branch {}", refVal);
@@ -65,8 +62,8 @@ public class CheckoutCommand extends BaseCommand {
             if (isBranch) {
                 System.out.println("Switched to branch '" + refVal + "'");
             } else {
-                String subject = getCommitShortMessage(repo, targetCommitOid);
-                String abbrev = targetCommitOid.length() >= 7 ? targetCommitOid.substring(0, 7) : targetCommitOid;
+                String subject = repo.getCommitShortMessage(targetCommitOid);
+                String abbrev = ObjectDatabase.shortOid(targetCommitOid);
                 System.out.println("HEAD is now at " + abbrev + " " + subject);
             }
             log.info("checkout done ref={} oid={}", refVal, targetCommitOid);
@@ -81,22 +78,4 @@ public class CheckoutCommand extends BaseCommand {
         }
     }
 
-    private static String currentBranchName() throws IOException {
-        SysRef headRef = Repository.INSTANCE.getRefs().getHeadRef();
-        if (headRef != null && headRef.getPath().startsWith(Refs.REFS_HEADS)) {
-            return headRef.getPath().substring(Refs.REFS_HEADS.length());
-        }
-        return null;
-    }
-
-    private static String getCommitShortMessage(Repository repo, String commitOid) throws IOException {
-        GitObject obj = repo.getDatabase().load(commitOid);
-        if (!"commit".equals(obj.getType())) {
-            return "";
-        }
-        Commit commit = Commit.fromBytes(obj.toBytes());
-        String msg = commit.getMessage();
-        int nl = msg.indexOf('\n');
-        return nl >= 0 ? msg.substring(0, nl).trim() : msg.trim();
-    }
 }

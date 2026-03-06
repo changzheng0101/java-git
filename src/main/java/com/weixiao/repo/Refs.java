@@ -61,6 +61,17 @@ public final class Refs {
     }
 
     /**
+     * 返回当前分支名（HEAD 指向 refs/heads/xxx 时）；detached HEAD 或不存在时返回 null。
+     */
+    public String getCurrentBranchName() throws IOException {
+        SysRef headRef = getHeadRef();
+        if (headRef != null && headRef.getPath().startsWith(REFS_HEADS)) {
+            return headRef.getPath().substring(REFS_HEADS.length());
+        }
+        return null;
+    }
+
+    /**
      * 返回 HEAD 指向的 ref（如 refs/heads/master）；若 HEAD 为 detached（直接存 commit id）或不存在则返回 null。
      */
     public SysRef getHeadRef() throws IOException {
@@ -268,7 +279,7 @@ public final class Refs {
      * 创建分支：将 refs/heads/&lt;name&gt; 指向 oid。调用前需已校验 name 合法且分支不存在。
      */
     public void createBranch(String name, String oid) throws IOException {
-        writeRef(new SysRef(REFS_HEADS + Constants.FILE_SEPARATOR + name), oid);
+        writeRef(new SysRef(REFS_HEADS + name), oid);
         log.debug("createBranch name={} oid={}", name, oid);
     }
 
@@ -283,7 +294,7 @@ public final class Refs {
         if (name == null || name.isEmpty()) {
             throw new IOException("branch name is empty");
         }
-        Path refPath = gitDir.resolve(REFS_HEADS + Constants.FILE_SEPARATOR + name);
+        Path refPath = gitDir.resolve(REFS_HEADS + name);
         if (!Files.exists(refPath)) {
             throw new IOException("branch '" + name + "' not found.");
         }

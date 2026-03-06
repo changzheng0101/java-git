@@ -1,24 +1,19 @@
 package com.weixiao.command;
 
-import com.weixiao.obj.Commit;
-import com.weixiao.obj.GitObject;
+import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
-import com.weixiao.repo.SysRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.Map;
 
 /**
  * jit branch：
@@ -133,7 +128,7 @@ public class BranchCommand extends BaseCommand {
             }
             try {
                 String oid = refs.deleteBranch(name);
-                String abbrev = oid != null && oid.length() >= 7 ? oid.substring(0, 7) : oid;
+                String abbrev = ObjectDatabase.shortOid(oid);
                 System.out.println("Deleted branch " + name + " (" + abbrev + ")");
             } catch (IOException e) {
                 System.err.println("error: " + e.getMessage());
@@ -147,54 +142,30 @@ public class BranchCommand extends BaseCommand {
      * 若 --verbose，则附加输出 abbrev commitId 和 message 首行。
      */
     private void listBranches(Repository repo) throws IOException {
-        Path gitDir = repo.getGitDir();
-        Path headsDir = gitDir.resolve("refs").resolve("heads");
-        if (!Files.exists(headsDir)) {
-            // 未创建任何分支时与 Git 一致：无输出、退出码为 0
-            return;
-        }
-
-        List<String> names = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(headsDir)) {
-            names = stream
-                    .filter(Files::isRegularFile)
-                    .map(p -> headsDir.relativize(p).toString().replace(java.io.File.separatorChar, '/'))
-                    .collect(Collectors.toList());
-        }
+        Map<String, String> namesToOid = repo.getRefs().getBranchNamesToOid();
+        List<String> names = new ArrayList<>(namesToOid.keySet());
         Collections.sort(names);
 
-        SysRef headRef = repo.getRefs().getHeadRef();
+        String currentBranch = repo.getRefs().getCurrentBranchName();
 
         for (String name : names) {
-            String fullRefPath = Refs.REFS_HEADS + name;
-            boolean current = headRef != null && headRef.getPath().equals(fullRefPath);
+            boolean current = name.equals(currentBranch);
             String prefix = current ? "*" : " ";
 
             if (!isSet("verbose")) {
                 System.out.println(prefix + " " + name);
             } else {
-                SysRef ref = new SysRef(fullRefPath);
-                String oid = repo.getRefs().readRef(ref);
+                String oid = namesToOid.get(name);
                 if (oid == null || oid.isEmpty()) {
                     System.out.println(prefix + " " + name);
                     continue;
                 }
-                String abbrev = oid.length() >= 7 ? oid.substring(0, 7) : oid;
-                String subject = getCommitShortMessage(repo, oid);
+                String abbrev = ObjectDatabase.shortOid(oid);
+                String subject = repo.getCommitShortMessage(oid);
                 // 与 git 类似：分支名、缩写 oid、标题行
                 System.out.println(prefix + " " + name + " " + abbrev + " " + subject);
             }
         }
     }
 
-    private static String getCommitShortMessage(Repository repo, String commitOid) throws IOException {
-        GitObject obj = repo.getDatabase().load(commitOid);
-        if (!"commit".equals(obj.getType())) {
-            return "";
-        }
-        Commit commit = Commit.fromBytes(obj.toBytes());
-        String msg = commit.getMessage();
-        int nl = msg.indexOf('\n');
-        return nl >= 0 ? msg.substring(0, nl).trim() : msg.trim();
-    }
 }

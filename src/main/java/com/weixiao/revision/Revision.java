@@ -91,7 +91,7 @@ public sealed interface Revision {
                 if ("commit".equals(obj.getType())) {
                     Commit commit = (Commit) obj;
                     String shortDate = formatAuthorShortDate(commit.getAuthor());
-                    String titleLine = firstLine(commit.getMessage());
+                    String titleLine = Commit.firstLine(commit.getMessage());
                     line += " " + shortDate + " - " + titleLine;
                 }
                 lines.add(line);
@@ -119,13 +119,6 @@ public sealed interface Revision {
             return "";
         }
 
-        private static String firstLine(String s) {
-            if (s == null) {
-                return "";
-            }
-            int i = s.indexOf('\n');
-            return i >= 0 ? s.substring(0, i).trim() : s.trim();
-        }
     }
 
     record Parent(Revision rev) implements Revision {

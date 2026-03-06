@@ -2,6 +2,7 @@ package com.weixiao.repo;
 
 import com.weixiao.model.StatusResult;
 import com.weixiao.obj.Blob;
+import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
@@ -174,6 +175,18 @@ public final class Repository {
      */
     public StatusResult getStatus() throws IOException {
         return Status.getStatus();
+    }
+
+    /**
+     * 加载 commit 并返回其 message 首行；非 commit 或加载失败时返回空串。
+     */
+    public String getCommitShortMessage(String commitOid) {
+        try {
+            Commit commit = database.loadCommit(commitOid);
+            return Commit.firstLine(commit.getMessage());
+        } catch (IOException e) {
+            return "";
+        }
     }
 
     public static String computeBlobOid(byte[] data) {

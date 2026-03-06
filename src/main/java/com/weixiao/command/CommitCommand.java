@@ -4,6 +4,7 @@ import com.weixiao.obj.Commit;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.Index;
+import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +68,7 @@ public class CommitCommand extends BaseCommand {
 
             repo.getRefs().updateCurrentBranch(commitOid);
             log.info("commit created oid={} tree={}", commitOid, treeOid);
-            System.out.println("[" + commitOid.substring(0, 7) + "] " + (msg != null && msg.contains("\n") ? msg.substring(0, msg.indexOf('\n')) : msg));
+            System.out.println("[" + ObjectDatabase.shortOid(commitOid) + "] " + Commit.firstLine(msg));
         } catch (IOException e) {
             log.error("commit failed", e);
             System.err.println("fatal: " + e.getMessage());

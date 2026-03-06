@@ -2,9 +2,8 @@ package com.weixiao.command;
 
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
-import com.weixiao.repo.Refs;
+import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
-import com.weixiao.repo.SysRef;
 import com.weixiao.utils.Color;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,9 +71,7 @@ public class LogCommand extends BaseCommand {
                 return;
             }
 
-            SysRef headRef = repo.getRefs().getHeadRef();
-            String headBranchName = (headRef != null && headRef.getPath().startsWith(Refs.REFS_HEADS))
-                    ? headRef.getPath().substring(Refs.REFS_HEADS.length()) : null;
+            String headBranchName = repo.getRefs().getCurrentBranchName();
             LogRefInfo refInfo = new LogRefInfo(headOid, headBranchName);
 
             walkCommits(headOid, refInfo);
@@ -132,9 +129,9 @@ public class LogCommand extends BaseCommand {
     }
 
     private void printCommit(String oid, Commit commit, boolean abbrev, String refsStr) {
-        String id = abbrev && oid != null && oid.length() > 7 ? oid.substring(0, 7) : oid;
+        String id = abbrev ? ObjectDatabase.shortOid(oid) : oid;
         if (isSet("oneline")) {
-            String title = firstLine(commit.getMessage());
+            String title = Commit.firstLine(commit.getMessage());
             System.out.println(Color.yellow(id) + refsStr + " " + title);
         } else {
             System.out.println("commit " + Color.yellow(id) + refsStr);
@@ -144,12 +141,5 @@ public class LogCommand extends BaseCommand {
         }
     }
 
-    private static String firstLine(String s) {
-        if (s == null) {
-            return "";
-        }
-        int i = s.indexOf('\n');
-        return i >= 0 ? s.substring(0, i).trim() : s.trim();
-    }
 }
 

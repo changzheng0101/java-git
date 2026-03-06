@@ -70,6 +70,17 @@ public final class Commit implements GitObject {
     }
 
     /**
+     * 取字符串首行（到第一个换行或结尾），null 返回空串。用于 commit message 等。
+     */
+    public static String firstLine(String s) {
+        if (s == null) {
+            return "";
+        }
+        int i = s.indexOf('\n');
+        return i >= 0 ? s.substring(0, i).trim() : s.trim();
+    }
+
+    /**
      * 返回对象类型 "commit"。
      */
     @Override

@@ -1,5 +1,6 @@
 package com.weixiao.command;
 
+import com.weixiao.repo.Refs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
@@ -22,9 +23,15 @@ public class InitCommand extends BaseCommand {
 
     private static final String GIT_DIR = ".git";
     private static final String DIR_OBJECTS = "objects";
-    private static final String DIR_REFS_HEADS = "refs/heads";
     private static final String DEFAULT_BRANCH = "master";
-    private static final String HEAD_REF = "ref: refs/heads/" + DEFAULT_BRANCH;
+
+    private static String dirRefsHeads() {
+        return Refs.REFS_HEADS.substring(0, Refs.REFS_HEADS.length() - 1);
+    }
+
+    private static String headRefContent() {
+        return "ref: " + Refs.REFS_HEADS + DEFAULT_BRANCH;
+    }
 
     @Override
     protected boolean requiresRepository() {
@@ -45,7 +52,7 @@ public class InitCommand extends BaseCommand {
 
         List<String> dirs = new ArrayList<>();
         dirs.add(DIR_OBJECTS);
-        dirs.add(DIR_REFS_HEADS);
+        dirs.add(dirRefsHeads());
 
         try {
             Files.createDirectories(gitPath);
@@ -55,8 +62,9 @@ public class InitCommand extends BaseCommand {
                 log.debug("created dir {}", sub);
             }
             Path headFile = gitPath.resolve("HEAD");
-            Files.writeString(headFile, HEAD_REF);
-            log.debug("wrote HEAD -> {}", HEAD_REF);
+            String headRef = headRefContent();
+            Files.writeString(headFile, headRef);
+            log.debug("wrote HEAD -> {}", headRef);
         } catch (IOException e) {
             log.error("init failed", e);
             System.err.println("fatal: " + e.getMessage());

@@ -167,7 +167,7 @@ public class DiffCommand extends BaseCommand {
 
         printDiffMode(aDiffSide, bDiffSide, color);
         String modeSuffix = Objects.equals(aDiffSide.getMode(), bDiffSide.getMode()) ? (aDiffSide.getMode() != null ? aDiffSide.getMode() : "") : "";
-        String indexLine = "index " + shortOid(aDiffSide.getOid()) + ".." + shortOid(bDiffSide.getOid()) + (modeSuffix.isEmpty() ? "" : " " + modeSuffix);
+        String indexLine = "index " + ObjectDatabase.shortOid(aDiffSide.getOid()) + ".." + ObjectDatabase.shortOid(bDiffSide.getOid()) + (modeSuffix.isEmpty() ? "" : " " + modeSuffix);
         System.out.println(color ? DiffColor.bold(indexLine) : indexLine);
 
         String minusLine = "--- " + (aDiffSide.hasFile() ? "a/" + path : DEV_NULL);
@@ -190,9 +190,6 @@ public class DiffCommand extends BaseCommand {
         }
     }
 
-    private String shortOid(String oid) {
-        return oid != null && oid.length() >= 7 ? oid.substring(0, 7) : oid;
-    }
 
 
     /**
