@@ -1,8 +1,9 @@
 package com.weixiao.command;
 
 import com.weixiao.obj.Commit;
-import com.weixiao.obj.GitObject;
 import com.weixiao.repo.ObjectDatabase;
+import com.weixiao.repo.Refs;
+import com.weixiao.repo.RevList;
 import com.weixiao.repo.Repository;
 import com.weixiao.utils.Color;
 import org.slf4j.Logger;
@@ -17,7 +18,7 @@ import java.util.Map;
 
 /**
  * jit log - 显示提交历史。
- * 当前实现：从 HEAD 开始沿 parent 链向后遍历，每次读取并输出一个 commit（流式输出，不缓存完整历史）。
+ * 基于 RevList（类似 git rev-list）获取提交列表，本命令仅负责格式化与输出。
  */
 @Command(name = "log", mixinStandardHelpOptions = true, description = "显示提交历史")
 public class LogCommand extends BaseCommand {
@@ -25,7 +26,7 @@ public class LogCommand extends BaseCommand {
     private static final Logger log = LoggerFactory.getLogger(LogCommand.class);
 
     /**
-     * log 遍历时用于显示 (HEAD -&gt; branch) 等 ref 信息的上下文；branchNamesToOid 在使用时由 walkCommits 再获取。
+     * log 输出时用于显示 (HEAD -&gt; branch) 等 ref 信息的上下文。
      */
     private static final class LogRefInfo {
         final String headOid;
@@ -64,40 +65,26 @@ public class LogCommand extends BaseCommand {
     protected void doRun() {
         log.debug("log start path={}", getStartPath());
         try {
-            String headOid = repo.getRefs().readHead();
+            Refs refs = Repository.INSTANCE.getRefs();
+            String headOid = refs.readHead();
             if (headOid == null || headOid.isEmpty()) {
                 System.err.println("fatal: Not a valid object name: 'HEAD'.");
                 exitCode = 1;
                 return;
             }
 
-            String headBranchName = repo.getRefs().getCurrentBranchName();
+            String headBranchName = refs.getCurrentBranchName();
             LogRefInfo refInfo = new LogRefInfo(headOid, headBranchName);
 
-            walkCommits(headOid, refInfo);
+            boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
+            for (RevList.CommitEntry entry : RevList.walk("HEAD")) {
+                String refsStr = formatRefsAtCommit(entry.oid(), refInfo);
+                printCommit(entry.oid(), entry.commit(), useAbbrev, refsStr);
+            }
         } catch (IOException e) {
             log.error("log failed", e);
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
-        }
-    }
-
-    /**
-     * 从给定 oid 开始沿 parent 链遍历提交，每次输出一个 commit。格式相关标志从 params 读取。
-     */
-    private void walkCommits(String startOid, LogRefInfo refInfo) throws IOException {
-        boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
-        String oid = startOid;
-        while (oid != null) {
-            GitObject obj = Repository.INSTANCE.getDatabase().load(oid);
-            if (!"commit".equals(obj.getType())) {
-                log.warn("skip non-commit object in history: {} type={}", oid, obj.getType());
-                break;
-            }
-            Commit commit = Commit.fromBytes(obj.toBytes());
-            String refsStr = formatRefsAtCommit(oid, refInfo);
-            printCommit(oid, commit, useAbbrev, refsStr);
-            oid = commit.getParentOid();
         }
     }
 
@@ -138,7 +125,11 @@ public class LogCommand extends BaseCommand {
             System.out.println("Author: " + Commit.formatAuthorNameEmail(commit.getAuthor()));
             System.out.println("Date:   " + Commit.formatAuthorDate(commit.getAuthor()));
             System.out.println();
-            System.out.println(Commit.firstLine(commit.getMessage()));
+            String msg = commit.getMessage();
+            if (msg != null && !msg.isEmpty()) {
+                System.out.println(msg.replaceAll("(?m)^", "    "));
+            }
+            System.out.println();
         }
     }
 
