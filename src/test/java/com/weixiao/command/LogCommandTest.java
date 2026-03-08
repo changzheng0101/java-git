@@ -127,5 +127,42 @@ class LogCommandTest {
         assertThat(out).contains("(HEAD -> master");
         assertThat(out).contains("dev)");
     }
+
+    @Test
+    @DisplayName("log master 显示 master 可达的提交")
+    void log_withRevision_master(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master", "--oneline");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("second").contains("first");
+    }
+
+    @Test
+    @DisplayName("log 多 revision 合并历史且每个 commit 只显示一次")
+    void log_multipleRevisions_mergedNoDuplicate(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "v3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master", "dev", "--oneline");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        String out = result.getOutput();
+        assertThat(out).contains("third").contains("second").contains("first");
+        long countFirst = out.lines().filter(line -> line.contains("first")).count();
+        assertThat(countFirst).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("log 非法 revision 失败并输出 fatal")
+    void log_invalidRevision_fails(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "nonexistent-branch");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("fatal:");
+    }
 }
 

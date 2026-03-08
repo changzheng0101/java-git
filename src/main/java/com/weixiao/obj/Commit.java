@@ -116,6 +116,27 @@ public final class Commit implements GitObject {
     }
 
     /**
+     * 从 author 字符串解析出时间戳（epoch 秒），用于 rev-list 按提交时间排序。
+     * 格式：Name &lt;email&gt; 1234567890 +0000
+     */
+    public static long getAuthorTimestamp(String author) {
+        if (author == null || author.isEmpty()) {
+            return 0L;
+        }
+        String[] parts = author.split("\\s+");
+        for (String p : parts) {
+            if (p.matches("\\d{9,}")) {
+                try {
+                    return Long.parseLong(p);
+                } catch (NumberFormatException ignored) {
+                    // continue
+                }
+            }
+        }
+        return 0L;
+    }
+
+    /**
      * 取字符串首行（到第一个换行或结尾），null 返回空串。用于 commit message 等。
      */
     public static String firstLine(String s) {

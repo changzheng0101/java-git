@@ -5,12 +5,14 @@ import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.RevList;
 import com.weixiao.repo.Repository;
+import com.weixiao.revision.RevisionParseException;
 import com.weixiao.utils.Color;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,6 +49,9 @@ public class LogCommand extends BaseCommand {
     @Option(names = {"--oneline"}, description = "每个提交一行：<abbrev-commit> <title line>")
     private boolean oneline;
 
+    @Parameters(index = "0", arity = "0..*", paramLabel = "REVISION", description = "要显示的修订（默认 HEAD），可多个")
+    private List<String> revisions;
+
     @Override
     protected void initParams() {
         params = new LinkedHashMap<>();
@@ -59,33 +64,60 @@ public class LogCommand extends BaseCommand {
         if (oneline) {
             params.put("oneline", "");
         }
+        if (revisions != null && !revisions.isEmpty()) {
+            params.put("revisions", String.join("\n", revisions));
+        }
     }
 
     @Override
     protected void doRun() {
-        log.debug("log start path={}", getStartPath());
+        log.debug("log start path={} revisions={}", getStartPath(), get("revisions"));
         try {
-            Refs refs = Repository.INSTANCE.getRefs();
-            String headOid = refs.readHead();
-            if (headOid == null || headOid.isEmpty()) {
-                System.err.println("fatal: Not a valid object name: 'HEAD'.");
-                exitCode = 1;
-                return;
+            List<String> revList = parseRevisionsParam();
+            if (revList.isEmpty()) {
+                String headOid = Repository.INSTANCE.getRefs().readHead();
+                if (headOid == null || headOid.isEmpty()) {
+                    System.err.println("fatal: Not a valid object name: 'HEAD'.");
+                    exitCode = 1;
+                    return;
+                }
             }
 
+            Refs refs = Repository.INSTANCE.getRefs();
+            String headOid = refs.readHead();
             String headBranchName = refs.getCurrentBranchName();
-            LogRefInfo refInfo = new LogRefInfo(headOid, headBranchName);
+            LogRefInfo refInfo = new LogRefInfo(headOid != null ? headOid : "", headBranchName);
 
+            String[] revArray = revList.isEmpty() ? new String[0] : revList.toArray(new String[0]);
             boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
-            for (RevList.CommitEntry entry : RevList.walk("HEAD")) {
+            for (RevList.CommitEntry entry : RevList.walk(revArray)) {
                 String refsStr = formatRefsAtCommit(entry.oid(), refInfo);
                 printCommit(entry.oid(), entry.commit(), useAbbrev, refsStr);
             }
+        } catch (RevisionParseException e) {
+            log.warn("log parse revision failed", e);
+            System.err.println("fatal: " + e.getMessage());
+            exitCode = 1;
         } catch (IOException e) {
             log.error("log failed", e);
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
+    }
+
+    private List<String> parseRevisionsParam() {
+        String s = get("revisions");
+        if (s == null || s.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> list = new ArrayList<>();
+        for (String rev : s.split("\n")) {
+            String t = rev.trim();
+            if (!t.isEmpty()) {
+                list.add(t);
+            }
+        }
+        return list;
     }
 
     /**
