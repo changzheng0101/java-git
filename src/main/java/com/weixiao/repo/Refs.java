@@ -49,7 +49,7 @@ public final class Refs {
      *
      * @return HEAD对应的commitId
      */
-    public String readHead() throws IOException {
+    public String readHead() {
         String content = getHeadContent();
         if (Strings.isNullOrEmpty(content)) {
             return null;
@@ -64,7 +64,7 @@ public final class Refs {
     /**
      * 返回当前分支名（HEAD 指向 refs/heads/xxx 时）；detached HEAD 或不存在时返回 null。
      */
-    public String getCurrentBranchName() throws IOException {
+    public String getCurrentBranchName() {
         SysRef headRef = getHeadRef();
         if (headRef != null && headRef.getPath().startsWith(REFS_HEADS)) {
             return headRef.getPath().substring(REFS_HEADS.length());
@@ -75,7 +75,7 @@ public final class Refs {
     /**
      * 返回 HEAD 指向的 ref（如 refs/heads/master）；若 HEAD 为 detached（直接存 commit id）或不存在则返回 null。
      */
-    public SysRef getHeadRef() throws IOException {
+    public SysRef getHeadRef() {
         String content = getHeadContent();
         if (content == null) {
             return null;
@@ -90,13 +90,18 @@ public final class Refs {
     /**
      * 读取 HEAD 文件原始内容（trim 后）；不存在则返回 null。
      */
-    private String getHeadContent() throws IOException {
+    private String getHeadContent() {
         Path headFile = gitDir.resolve(HEAD_REF.getPath());
         if (!Files.exists(headFile)) {
             log.debug("getHeadContent: no HEAD file");
             return null;
         }
-        return Files.readString(headFile, StandardCharsets.UTF_8).trim();
+
+        try {
+            return Files.readString(headFile, StandardCharsets.UTF_8).trim();
+        } catch (IOException e) {
+            throw new RuntimeException("读取HEAD文件异常");
+        }
     }
 
     /**
@@ -114,7 +119,7 @@ public final class Refs {
      *
      * @return ref对应的commitId
      */
-    public String readRef(SysRef ref) throws IOException {
+    public String readRef(SysRef ref) {
         if (ref == null) {
             return null;
         }
@@ -126,7 +131,12 @@ public final class Refs {
         if (!Files.exists(refPath)) {
             return null;
         }
-        return Files.readString(refPath, StandardCharsets.UTF_8).trim();
+
+        try {
+            return Files.readString(refPath, StandardCharsets.UTF_8).trim();
+        } catch (IOException e) {
+            throw new RuntimeException("读取" + ref.getPath() + "出错");
+        }
     }
 
     /**
@@ -251,7 +261,7 @@ public final class Refs {
      * 返回所有分支名到 commit oid 的映射（分支名为 refs/heads 下的相对路径，如 master、feature/bar）。
      * 用于 log 等命令显示 (HEAD -&gt; master) 等。
      */
-    public Map<String, String> getBranchNamesToOid() throws IOException {
+    public Map<String, String> getBranchNamesToOid() {
         Path headsDir = gitDir.resolve("refs").resolve("heads");
         Map<String, String> result = new LinkedHashMap<>();
         if (!Files.exists(headsDir)) {
@@ -263,15 +273,14 @@ public final class Refs {
                     .forEach(p -> {
                         String name = headsDir.relativize(p).toString().replace(Constants.FILE_SEPARATOR, "/");
                         SysRef ref = new SysRef(REFS_HEADS + name);
-                        try {
-                            String oid = readRef(ref);
-                            if (!Strings.isNullOrEmpty(oid)) {
-                                result.put(name, oid);
-                            }
-                        } catch (IOException e) {
-                            log.debug("skip ref {}: {}", name, e.getMessage());
+                        String oid = readRef(ref);
+                        if (!Strings.isNullOrEmpty(oid)) {
+                            result.put(name, oid);
                         }
+
                     });
+        } catch (IOException e) {
+            throw new RuntimeException("读取分支文件出错");
         }
         return result;
     }

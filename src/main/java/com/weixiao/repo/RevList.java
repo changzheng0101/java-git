@@ -1,7 +1,5 @@
 package com.weixiao.repo;
 
-import com.google.common.base.Strings;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.weixiao.obj.Commit;
@@ -22,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * 类似 git rev-list：从给定 revision 开始沿 parent 链遍历，找出符合条件的提交。
@@ -38,13 +37,17 @@ public final class RevList {
      */
     public enum CommitFlag {
         /**
-         * 已处理（已出队并处理过）。
+         * 代表已经处理过
          */
-        VISITED,
+        SEEN,
         /**
-         * 排除或由排除可达的 commit，不加入输出。
+         * 一定不会输出 从北排除的Revision可以访问到
          */
-        UNINTERESTING
+        UNINTERESTING,
+        /**
+         * 需要输出
+         */
+        ADDED
     }
 
     /**
@@ -90,107 +93,80 @@ public final class RevList {
     }
 
     /**
-     * 从多个 revision 出发，合并遍历所有可达提交，按提交时间从新到旧，每个 commit 只出现一次。
-     * 无参数时等价于 walk(parseRevSpecs(HEAD))。仓库通过 {@link Repository#INSTANCE} 单例获取。
+     * 根据解析结果遍历，每产生一条提交即回调 consumer，不积攒列表。
+     * 适合 log 等流式输出场景。
      *
-     * @param revisions 修订说明（HEAD、分支名、oid 等），可为空表示默认 HEAD
-     * @return 按提交时间从新到旧的 (oid, Commit) 列表
+     * @param spec     由 {@link #parseRevSpecs(List)} 得到的起点与排除点
+     * @param consumer 每遍历到一条提交时调用
      */
-    public static List<CommitEntry> walk(String... revisions) throws IOException {
-        List<String> revList = (revisions != null && revisions.length > 0)
-                ? List.of(revisions)
-                : List.of("HEAD");
-        return walk(parseRevSpecs(revList));
-    }
-
-    /**
-     * 根据解析结果遍历：从起点出发，排除“由排除点可达”的提交。
-     * 等价于 git log start.. 或 git log ^exclude start：只输出从 start 可达且从 exclude 不可达的提交。
-     * excludeRevisions 为空时等价于仅用 startRevisions 做普通 walk。
-     *
-     * @param spec 由 {@link #parseRevSpecs(List)} 得到的起点与排除点
-     * @return 按提交时间从新到旧的 (oid, Commit) 列表
-     */
-    public static List<CommitEntry> walk(RevSpecResult spec) throws IOException {
+    public static void walk(RevSpecResult spec, Consumer<CommitEntry> consumer) throws IOException {
         Repository repo = Repository.INSTANCE;
         Collection<String> startRevisions = spec.startRevisions();
-        Collection<String> excludeRevisions = spec.excludeRevisions() != null ? spec.excludeRevisions() : List.of();
+        Collection<String> excludeRevisions = spec.excludeRevisions();
+
+        // commitId -> Commit Obj
         Map<String, Commit> commits = new HashMap<>();
-        Set<String> flags = new HashSet<>();
+        // commitId -> flags
+        Map<String, Set<CommitFlag>> flags = new HashMap<>();
         Comparator<String> byTimeDesc = (a, b) -> {
             long ta = Commit.getAuthorTimestamp(commits.get(a).getAuthor());
             long tb = Commit.getAuthorTimestamp(commits.get(b).getAuthor());
             int c = Long.compare(tb, ta);
             return c != 0 ? c : a.compareTo(b);
         };
-        PriorityQueue<String> queue = new PriorityQueue<>(byTimeDesc);
-        Set<String> queueOids = new LinkedHashSet<>();
+        // queue to show commit 时间越晚的排在越前面，越先输出
+        PriorityQueue<String> logQueue = new PriorityQueue<>(byTimeDesc);
+        // 用于给commit打标 时间越晚的排在越前面，越先输出
+        PriorityQueue<String> processQueue = new PriorityQueue<>(byTimeDesc);
 
-        List<String> startList = Iterables.isEmpty(startRevisions)
-                ? List.of("HEAD")
-                : new ArrayList<>(startRevisions);
-        for (String rev : startList) {
+        // init
+        for (String rev : startRevisions) {
             String oid = Revision.parse(rev.trim()).getCommitId(repo);
-            if (loadCommit(repo, oid, commits)) {
-                queue.add(oid);
-                queueOids.add(oid);
-            }
+            loadCommit(oid, commits);
+            processQueue.add(oid);
+            mark(oid, CommitFlag.SEEN, flags);
         }
 
         if (!Iterables.isEmpty(excludeRevisions)) {
-            Deque<String> toMark = new ArrayDeque<>();
             for (String rev : excludeRevisions) {
                 String oid = Revision.parse(rev.trim()).getCommitId(repo);
-                if (loadCommit(repo, oid, commits)) {
-                    toMark.add(oid);
-                }
-            }
-            while (!toMark.isEmpty()) {
-                String oid = toMark.poll();
-                if (marked(oid, CommitFlag.UNINTERESTING, flags)) {
-                    continue;
-                }
+                loadCommit(oid, commits);
+                processQueue.add(oid);
+                mark(oid, CommitFlag.SEEN, flags);
                 mark(oid, CommitFlag.UNINTERESTING, flags);
-                Commit c = commits.get(oid);
-                String parentOid = c.getParentOid();
-                if (parentOid != null && loadCommit(repo, parentOid, commits)) {
-                    toMark.add(parentOid);
-                }
             }
         }
 
-        List<CommitEntry> result = new ArrayList<>();
-        while (!queue.isEmpty()) {
-            if (!queueOids.isEmpty()
-                    && queueOids.stream().allMatch(oid -> marked(oid, CommitFlag.UNINTERESTING, flags))) {
-                break;
-            }
-            String oid = queue.poll();
-            queueOids.remove(oid);
-            if (marked(oid, CommitFlag.VISITED, flags)) {
-                continue;
-            }
-            mark(oid, CommitFlag.VISITED, flags);
+        // 遍历更改状态
+        while (!processQueue.isEmpty()) {
+            String oid = processQueue.poll();
             Commit commit = commits.get(oid);
 
+            String parentCommitId = commit.getParentOid();
+            if (parentCommitId != null) {
+                loadCommit(parentCommitId, commits);
+                mark(parentCommitId, CommitFlag.SEEN, flags);
+                processQueue.add(parentCommitId);
+            }
             if (marked(oid, CommitFlag.UNINTERESTING, flags)) {
-                String parentOid = commit.getParentOid();
-                if (parentOid != null && loadCommit(repo, parentOid, commits)) {
-                    mark(parentOid, CommitFlag.UNINTERESTING, flags);
-                    queue.add(parentOid);
-                    queueOids.add(parentOid);
-                }
-                continue;
+                mark(parentCommitId, CommitFlag.UNINTERESTING, flags);
+            }
+            if (!marked(oid, CommitFlag.UNINTERESTING, flags)) {
+                logQueue.add(oid);
             }
 
-            result.add(new CommitEntry(oid, commit));
-            String parentOid = commit.getParentOid();
-            if (parentOid != null && loadCommit(repo, parentOid, commits)) {
-                queue.add(parentOid);
-                queueOids.add(parentOid);
+
+            if (!logQueue.isEmpty()) {
+                String logCommitId = logQueue.poll();
+                consumer.accept(new CommitEntry(logCommitId, commits.get(logCommitId)));
             }
         }
-        return result;
+
+        // 处理剩余数据
+        while (!logQueue.isEmpty()) {
+            String logCommitId = logQueue.poll();
+            consumer.accept(new CommitEntry(logCommitId, commits.get(logCommitId)));
+        }
     }
 
     /**
@@ -198,32 +174,32 @@ public final class RevList {
      *
      * @return 是否为 commit 且已放入缓存（非 commit 不放入，返回 false）
      */
-    private static boolean loadCommit(Repository repo, String oid, Map<String, Commit> commits)
+    private static void loadCommit(String oid, Map<String, Commit> commits)
             throws IOException {
         if (commits.containsKey(oid)) {
-            return true;
+            return;
         }
-        GitObject obj = repo.getDatabase().load(oid);
+        GitObject obj = Repository.INSTANCE.getDatabase().load(oid);
+
         if (!"commit".equals(obj.getType())) {
-            return false;
+            throw new RuntimeException("commitId不合法");
         }
         commits.put(oid, Commit.fromBytes(obj.toBytes()));
-        return true;
     }
 
     /**
      * 为 commit 打上标记；若该 commit 已有此标记则返回 false。
      */
-    public static boolean mark(String oid, CommitFlag flag, Set<String> flags) {
-        String key = oid + ":" + flag.name();
-        return flags.add(key);
+    public static boolean mark(String oid, CommitFlag flag, Map<String, Set<CommitFlag>> flags) {
+        return flags.computeIfAbsent(oid, k -> new HashSet<>()).add(flag);
     }
 
     /**
      * 检查 commit 是否已有某标记。
      */
-    public static boolean marked(String oid, CommitFlag flag, Set<String> flags) {
-        return flags.contains(oid + ":" + flag.name());
+    public static boolean marked(String oid, CommitFlag flag, Map<String, Set<CommitFlag>> flags) {
+        Set<CommitFlag> set = flags.get(oid);
+        return set != null && set.contains(flag);
     }
 
     /**

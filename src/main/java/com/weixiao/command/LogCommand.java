@@ -67,10 +67,10 @@ public class LogCommand extends BaseCommand {
             RevList.RevSpecResult spec = RevList.parseRevSpecs(revisions);
 
             boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
-            for (RevList.CommitEntry entry : RevList.walk(spec)) {
+            RevList.walk(spec, entry -> {
                 String refsStr = formatRefsAtCommit(entry.oid());
                 printCommit(entry.oid(), entry.commit(), useAbbrev, refsStr);
-            }
+            });
         } catch (RevisionParseException e) {
             log.warn("log parse revision failed", e);
             System.err.println("fatal: " + e.getMessage());
@@ -85,7 +85,7 @@ public class LogCommand extends BaseCommand {
     /**
      * 格式化为 Git 风格的 (HEAD -&gt; master, other) 或 (branch) 等。
      */
-    private static String formatRefsAtCommit(String commitOid) throws IOException {
+    private static String formatRefsAtCommit(String commitOid) {
         Map<String, String> branchNamesToOid = Repository.INSTANCE.getRefs().getBranchNamesToOid();
         String headOid = Repository.INSTANCE.getRefs().readHead();
         String headBranchName = Repository.INSTANCE.getRefs().getCurrentBranchName();
