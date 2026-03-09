@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.google.common.base.Strings;
 import com.weixiao.obj.Blob;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
@@ -154,7 +155,7 @@ public final class ObjectDatabase {
      * 用于短 SHA1 解析：仅当候选唯一时可解析。
      */
     public List<String> prefixMatch(String prefix) throws IOException {
-        if (prefix == null || prefix.isEmpty() || prefix.length() > 40) {
+        if (Strings.isNullOrEmpty(prefix) || prefix.length() > 40) {
             return Collections.emptyList();
         }
         if (!prefix.matches("[0-9a-f]+")) {
@@ -197,8 +198,8 @@ public final class ObjectDatabase {
      * 返回 oid 的短形式（至少 7 位），用于歧义提示等。
      */
     public static String shortOid(String oid) {
-        if (oid == null || oid.length() < 7) {
-            return oid != null ? oid : "";
+        if (Strings.isNullOrEmpty(oid) || oid.length() < 7) {
+            return Strings.nullToEmpty(oid);
         }
         return oid.substring(0, 7);
     }
@@ -207,7 +208,9 @@ public final class ObjectDatabase {
      * 根据 40 字符 hex oid 得到 .git/objects/xx/yyyy... 路径（前 2 字符为子目录）。
      */
     private Path objectPath(String oid) {
-        if (oid == null || oid.length() < 2) throw new IllegalArgumentException("invalid oid: " + oid);
+        if (Strings.isNullOrEmpty(oid) || oid.length() < 2) {
+            throw new IllegalArgumentException("invalid oid: " + oid);
+        }
         return objectsDir.resolve(oid.substring(0, 2)).resolve(oid.substring(2));
     }
 

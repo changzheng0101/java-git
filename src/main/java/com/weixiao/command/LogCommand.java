@@ -1,5 +1,6 @@
 package com.weixiao.command;
 
+import com.google.common.base.Strings;
 import com.weixiao.obj.Commit;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Refs;
@@ -12,8 +13,8 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,19 +28,6 @@ public class LogCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(LogCommand.class);
 
-    /**
-     * log 输出时用于显示 (HEAD -&gt; branch) 等 ref 信息的上下文。
-     */
-    private static final class LogRefInfo {
-        final String headOid;
-        final String headBranchName;
-
-        LogRefInfo(String headOid, String headBranchName) {
-            this.headOid = headOid;
-            this.headBranchName = headBranchName;
-        }
-    }
-
     @Option(names = {"--abbrev-commit"}, description = "使用缩写的提交 ID（默认 7 位）")
     private boolean abbrevCommit;
 
@@ -49,7 +37,13 @@ public class LogCommand extends BaseCommand {
     @Option(names = {"--oneline"}, description = "每个提交一行：<abbrev-commit> <title line>")
     private boolean oneline;
 
-    @Parameters(index = "0", arity = "0..*", paramLabel = "REVISION", description = "要显示的修订（默认 HEAD），可多个")
+    /**
+     * 接受如下参数：
+     * 默认 HEAD
+     * 多个Revision
+     * A..B（仅显示在 B 可达且 A 不可达的提交）
+     */
+    @Parameters(index = "0", arity = "0..1", paramLabel = "REVISION", description = "默认 HEAD；可为单个修订（分支/oid/HEAD）或 A..B")
     private List<String> revisions;
 
     @Override
@@ -64,34 +58,17 @@ public class LogCommand extends BaseCommand {
         if (oneline) {
             params.put("oneline", "");
         }
-        if (revisions != null && !revisions.isEmpty()) {
-            params.put("revisions", String.join("\n", revisions));
-        }
     }
 
     @Override
     protected void doRun() {
         log.debug("log start path={} revisions={}", getStartPath(), get("revisions"));
         try {
-            List<String> revList = parseRevisionsParam();
-            if (revList.isEmpty()) {
-                String headOid = Repository.INSTANCE.getRefs().readHead();
-                if (headOid == null || headOid.isEmpty()) {
-                    System.err.println("fatal: Not a valid object name: 'HEAD'.");
-                    exitCode = 1;
-                    return;
-                }
-            }
+            RevList.RevSpecResult spec = RevList.parseRevSpecs(revisions);
 
-            Refs refs = Repository.INSTANCE.getRefs();
-            String headOid = refs.readHead();
-            String headBranchName = refs.getCurrentBranchName();
-            LogRefInfo refInfo = new LogRefInfo(headOid != null ? headOid : "", headBranchName);
-
-            String[] revArray = revList.isEmpty() ? new String[0] : revList.toArray(new String[0]);
             boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
-            for (RevList.CommitEntry entry : RevList.walk(revArray)) {
-                String refsStr = formatRefsAtCommit(entry.oid(), refInfo);
+            for (RevList.CommitEntry entry : RevList.walk(spec)) {
+                String refsStr = formatRefsAtCommit(entry.oid());
                 printCommit(entry.oid(), entry.commit(), useAbbrev, refsStr);
             }
         } catch (RevisionParseException e) {
@@ -105,30 +82,17 @@ public class LogCommand extends BaseCommand {
         }
     }
 
-    private List<String> parseRevisionsParam() {
-        String s = get("revisions");
-        if (s == null || s.isEmpty()) {
-            return Collections.emptyList();
-        }
-        List<String> list = new ArrayList<>();
-        for (String rev : s.split("\n")) {
-            String t = rev.trim();
-            if (!t.isEmpty()) {
-                list.add(t);
-            }
-        }
-        return list;
-    }
-
     /**
      * 格式化为 Git 风格的 (HEAD -&gt; master, other) 或 (branch) 等。
      */
-    private static String formatRefsAtCommit(String commitOid, LogRefInfo refInfo) throws IOException {
+    private static String formatRefsAtCommit(String commitOid) throws IOException {
         Map<String, String> branchNamesToOid = Repository.INSTANCE.getRefs().getBranchNamesToOid();
+        String headOid = Repository.INSTANCE.getRefs().readHead();
+        String headBranchName = Repository.INSTANCE.getRefs().getCurrentBranchName();
         List<String> parts = new ArrayList<>();
-        boolean isHead = commitOid.equals(refInfo.headOid);
-        if (isHead && refInfo.headBranchName != null) {
-            parts.add("HEAD -> " + refInfo.headBranchName);
+        boolean isHead = commitOid.equals(headOid);
+        if (isHead && headBranchName != null) {
+            parts.add("HEAD -> " + headBranchName);
         } else if (isHead) {
             parts.add("HEAD");
         }
@@ -136,7 +100,7 @@ public class LogCommand extends BaseCommand {
             if (!e.getValue().equals(commitOid)) {
                 continue;
             }
-            if (e.getKey().equals(refInfo.headBranchName)) {
+            if (e.getKey().equals(headBranchName)) {
                 continue;
             }
             parts.add(e.getKey());
@@ -158,7 +122,7 @@ public class LogCommand extends BaseCommand {
             System.out.println("Date:   " + Commit.formatAuthorDate(commit.getAuthor()));
             System.out.println();
             String msg = commit.getMessage();
-            if (msg != null && !msg.isEmpty()) {
+            if (!Strings.isNullOrEmpty(msg)) {
                 System.out.println(msg.replaceAll("(?m)^", "    "));
             }
             System.out.println();

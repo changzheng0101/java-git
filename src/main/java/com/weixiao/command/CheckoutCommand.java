@@ -2,7 +2,6 @@ package com.weixiao.command;
 
 import com.weixiao.repo.Migration;
 import com.weixiao.repo.ObjectDatabase;
-import com.weixiao.repo.Repository;
 import com.weixiao.revision.Revision;
 import com.weixiao.revision.RevisionParseException;
 import org.slf4j.Logger;

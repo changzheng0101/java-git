@@ -11,6 +11,8 @@ import picocli.CommandLine;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -49,19 +51,19 @@ class RevListTest {
     @DisplayName("mark 首次添加返回 true，重复添加返回 false")
     void mark_returnsTrueFirstTimeFalseWhenAlreadySet() {
         Set<String> flags = new HashSet<>();
-        assertThat(RevList.mark("abc", RevList.FLAG_VISITED, flags)).isTrue();
-        assertThat(RevList.mark("abc", RevList.FLAG_VISITED, flags)).isFalse();
-        assertThat(RevList.mark("def", RevList.FLAG_VISITED, flags)).isTrue();
+        assertThat(RevList.mark("abc", RevList.CommitFlag.VISITED, flags)).isTrue();
+        assertThat(RevList.mark("abc", RevList.CommitFlag.VISITED, flags)).isFalse();
+        assertThat(RevList.mark("def", RevList.CommitFlag.VISITED, flags)).isTrue();
     }
 
     @Test
     @DisplayName("marked 未标记返回 false，已标记返回 true")
     void marked_returnsFalseUntilMarked() {
         Set<String> flags = new HashSet<>();
-        assertThat(RevList.marked("oid1", RevList.FLAG_VISITED, flags)).isFalse();
-        RevList.mark("oid1", RevList.FLAG_VISITED, flags);
-        assertThat(RevList.marked("oid1", RevList.FLAG_VISITED, flags)).isTrue();
-        assertThat(RevList.marked("oid2", RevList.FLAG_VISITED, flags)).isFalse();
+        assertThat(RevList.marked("oid1", RevList.CommitFlag.VISITED, flags)).isFalse();
+        RevList.mark("oid1", RevList.CommitFlag.VISITED, flags);
+        assertThat(RevList.marked("oid1", RevList.CommitFlag.VISITED, flags)).isTrue();
+        assertThat(RevList.marked("oid2", RevList.CommitFlag.VISITED, flags)).isFalse();
     }
 
     @Test
@@ -120,5 +122,61 @@ class RevListTest {
 
         assertThat(entries).hasSize(2);
         assertThat(entries.stream().map(RevList.CommitEntry::oid).collect(Collectors.toList())).doesNotHaveDuplicates();
+    }
+
+    @Test
+    @DisplayName("parseRevSpecs 解析 ^ 与 .. 语法")
+    void parseRevSpecs_parsesCaretAndDotDot() {
+        RevList.RevSpecResult r1 = RevList.parseRevSpecs(Arrays.asList("topic..master"));
+        assertThat(r1.startRevisions()).containsExactly("master");
+        assertThat(r1.excludeRevisions()).containsExactly("topic");
+
+        RevList.RevSpecResult r2 = RevList.parseRevSpecs(Arrays.asList("^topic", "master"));
+        assertThat(r2.startRevisions()).containsExactly("master");
+        assertThat(r2.excludeRevisions()).containsExactly("topic");
+
+        RevList.RevSpecResult r3 = RevList.parseRevSpecs(Arrays.asList("master"));
+        assertThat(r3.startRevisions()).containsExactly("master");
+        assertThat(r3.excludeRevisions()).isEmpty();
+
+        RevList.RevSpecResult r4 = RevList.parseRevSpecs(Collections.emptyList());
+        assertThat(r4.startRevisions()).containsExactly("HEAD");
+        assertThat(r4.excludeRevisions()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("walkWithExcludes topic..master 只输出在 master 不在 topic 的提交")
+    void walkWithExcludes_dotDot_onlyCommitsInStartNotInExclude(@TempDir Path tempDir) throws Exception {
+        initRepoWithBranch(tempDir);
+        Repository.find(tempDir);
+        String masterOid = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "master"));
+        String devOid = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "dev"));
+        assertThat(devOid).isNotEqualTo(masterOid)
+                .as("dev 应在 third 提交后指向新 commit，与 master 不同");
+
+        // HEAD 当前在 dev，应解析为 third；排除 master（second）后仅剩 third
+        List<RevList.CommitEntry> inDevNotMaster = RevList.walk(
+                new RevList.RevSpecResult(List.of("HEAD"), List.of(masterOid)));
+        assertThat(inDevNotMaster).hasSize(1);
+        assertThat(inDevNotMaster.get(0).oid()).isEqualTo(devOid);
+        assertThat(inDevNotMaster.get(0).commit().getMessage()).contains("third");
+
+        // dev 为 third→second→first，master 为 second→first，故 master..dev 为空（master 无 dev 不可达的提交）
+        List<RevList.CommitEntry> inMasterNotDev = RevList.walk(
+                new RevList.RevSpecResult(List.of(masterOid), List.of(devOid)));
+        assertThat(inMasterNotDev).isEmpty();
+    }
+
+    @Test
+    @DisplayName("walk(RevSpecResult) 无排除点时与 walk(String) 行为一致")
+    void walkRevSpecResult_noExcludes_sameAsWalk(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        Repository.find(tempDir);
+
+        List<RevList.CommitEntry> withSpec = RevList.walk(new RevList.RevSpecResult(List.of("HEAD"), List.of()));
+        List<RevList.CommitEntry> plain = RevList.walk("HEAD");
+        assertThat(withSpec).hasSize(plain.size());
+        assertThat(withSpec.stream().map(RevList.CommitEntry::oid).collect(Collectors.toList()))
+                .containsExactlyElementsOf(plain.stream().map(RevList.CommitEntry::oid).collect(Collectors.toList()));
     }
 }

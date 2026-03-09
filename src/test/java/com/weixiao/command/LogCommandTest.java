@@ -138,8 +138,8 @@ class LogCommandTest {
     }
 
     @Test
-    @DisplayName("log 多 revision 合并历史且每个 commit 只显示一次")
-    void log_multipleRevisions_mergedNoDuplicate(@TempDir Path tempDir) throws Exception {
+    @DisplayName("log 单 revision 显示该起点可达的提交")
+    void log_singleRevision_showsReachable(@TempDir Path tempDir) throws Exception {
         initRepoWithTwoCommits(tempDir);
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
@@ -148,12 +148,27 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 
-        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master", "dev", "--oneline");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "dev", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         String out = result.getOutput();
         assertThat(out).contains("third").contains("second").contains("first");
-        long countFirst = out.lines().filter(line -> line.contains("first")).count();
-        assertThat(countFirst).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("log A..B 只显示在 B 可达且 A 不可达的提交")
+    void log_dotDot_onlyCommitsInBNotInA(@TempDir Path tempDir) throws Exception {
+        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "v3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master..dev", "--oneline");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        String out = result.getOutput();
+        assertThat(out).contains("third").doesNotContain("second");
     }
 
     @Test

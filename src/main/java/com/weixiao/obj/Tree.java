@@ -1,5 +1,6 @@
 package com.weixiao.obj;
 
+import com.google.common.collect.Lists;
 import com.weixiao.utils.HexUtils;
 
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ public final class Tree implements GitObject {
      * 用给定条目构造 tree，内部按 name 排序；null 或空列表视为空 tree。
      */
     public Tree(List<TreeEntry> entries) {
-        this.entries = new ArrayList<>(entries != null ? entries : List.of());
+        this.entries = new ArrayList<>(entries != null ? entries : Collections.emptyList());
         this.entries.sort(Comparator.comparing(TreeEntry::getName));
     }
 
@@ -27,7 +28,7 @@ public final class Tree implements GitObject {
      * 从对象体字节解析出 tree，每条：mode + " " + name + "\\0" + 20 字节二进制 oid。
      */
     public static Tree fromBytes(byte[] body) {
-        List<TreeEntry> entries = new ArrayList<>();
+        List<TreeEntry> entries = Lists.newArrayList();
         int pos = 0;
         while (pos < body.length) {
             int nul = indexOf(body, (byte) 0, pos);
@@ -79,7 +80,7 @@ public final class Tree implements GitObject {
      */
     @Override
     public byte[] toBytes() {
-        List<byte[]> parts = new ArrayList<>();
+        List<byte[]> parts = Lists.newArrayList();
         for (TreeEntry e : entries) {
             byte[] nameBytes = e.getName().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             byte[] oidBinary = HexUtils.hexToBytes(e.getOid());

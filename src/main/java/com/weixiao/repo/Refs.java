@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.google.common.base.Strings;
 import com.weixiao.utils.Constants;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -50,7 +51,7 @@ public final class Refs {
      */
     public String readHead() throws IOException {
         String content = getHeadContent();
-        if (content == null || content.isEmpty()) {
+        if (Strings.isNullOrEmpty(content)) {
             return null;
         }
         Matcher m = HEAD_REF_PATTERN.matcher(content);
@@ -118,7 +119,7 @@ public final class Refs {
             return null;
         }
         String path = ref.getPath();
-        if (path == null || path.isEmpty()) {
+        if (Strings.isNullOrEmpty(path)) {
             return null;
         }
         Path refPath = gitDir.resolve(path);
@@ -136,7 +137,7 @@ public final class Refs {
             throw new IllegalArgumentException("ref must not be null");
         }
         String path = ref.getPath();
-        if (path == null || path.isEmpty()) {
+        if (Strings.isNullOrEmpty(path)) {
             throw new IllegalArgumentException("ref.path must not be empty");
         }
         Path refPath = gitDir.resolve(path);
@@ -191,7 +192,7 @@ public final class Refs {
      * @return 若合法返回 null，否则返回错误原因描述
      */
     public static String validateBranchName(String name) {
-        if (name == null || name.isEmpty()) {
+        if (Strings.isNullOrEmpty(name)) {
             return "branch name is empty";
         }
         if (name.contains(DOUBLE_DOT)) {
@@ -264,7 +265,7 @@ public final class Refs {
                         SysRef ref = new SysRef(REFS_HEADS + name);
                         try {
                             String oid = readRef(ref);
-                            if (oid != null && !oid.isEmpty()) {
+                            if (!Strings.isNullOrEmpty(oid)) {
                                 result.put(name, oid);
                             }
                         } catch (IOException e) {
@@ -291,7 +292,7 @@ public final class Refs {
      * @throws IOException 当分支不存在或删除失败时抛出
      */
     public String deleteBranch(String name) throws IOException {
-        if (name == null || name.isEmpty()) {
+        if (Strings.isNullOrEmpty(name)) {
             throw new IOException("branch name is empty");
         }
         Path refPath = gitDir.resolve(REFS_HEADS + name);

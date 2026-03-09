@@ -1,5 +1,6 @@
 package com.weixiao.obj;
 
+import com.google.common.base.Strings;
 import lombok.Getter;
 
 import java.nio.charset.StandardCharsets;
@@ -29,7 +30,7 @@ public final class Commit implements GitObject {
         this.parentOid = parentOid;
         this.author = author;
         this.committer = committer;
-        this.message = message != null ? message : "";
+        this.message = Strings.nullToEmpty(message);
     }
 
     /**
@@ -78,7 +79,7 @@ public final class Commit implements GitObject {
      * 格式：Name &lt;email&gt; 1234567890 +0000
      */
     public static String formatAuthorNameEmail(String author) {
-        if (author == null || author.isEmpty()) {
+        if (Strings.isNullOrEmpty(author)) {
             return "";
         }
         String[] parts = author.split("\\s+");
@@ -95,7 +96,7 @@ public final class Commit implements GitObject {
      * 格式：Mon Jan 15 12:00:00 2024 +0000
      */
     public static String formatAuthorDate(String author) {
-        if (author == null || author.isEmpty()) {
+        if (Strings.isNullOrEmpty(author)) {
             return "";
         }
         String[] parts = author.split("\\s+");
@@ -120,7 +121,7 @@ public final class Commit implements GitObject {
      * 格式：Name &lt;email&gt; 1234567890 +0000
      */
     public static long getAuthorTimestamp(String author) {
-        if (author == null || author.isEmpty()) {
+        if (Strings.isNullOrEmpty(author)) {
             return 0L;
         }
         String[] parts = author.split("\\s+");
@@ -140,11 +141,9 @@ public final class Commit implements GitObject {
      * 取字符串首行（到第一个换行或结尾），null 返回空串。用于 commit message 等。
      */
     public static String firstLine(String s) {
-        if (s == null) {
-            return "";
-        }
-        int i = s.indexOf('\n');
-        return i >= 0 ? s.substring(0, i).trim() : s.trim();
+        String t = Strings.nullToEmpty(s);
+        int i = t.indexOf('\n');
+        return i >= 0 ? t.substring(0, i).trim() : t.trim();
     }
 
     /**

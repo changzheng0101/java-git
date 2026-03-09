@@ -1,5 +1,6 @@
 package com.weixiao.utils;
 
+import com.google.common.base.Strings;
 import lombok.experimental.UtilityClass;
 
 import java.nio.file.Path;
@@ -21,15 +22,12 @@ public class PathUtils {
      * @return 归一化后的路径，null 时返回 ""
      */
     public static String normalizePath(String path) {
-        if (path == null) {
-            return "";
-        }
-        String p = path.replace('\\', '/').trim();
+        String p = Strings.nullToEmpty(path).replace('\\', '/').trim();
         return p.startsWith("/") ? p.substring(1) : p;
     }
 
     public static int pathDepth(String path) {
-        if (path == null || path.isEmpty()) {
+        if (Strings.isNullOrEmpty(path)) {
             return 0;
         }
         int n = 0;
@@ -70,7 +68,7 @@ public class PathUtils {
      */
     public static List<String> getAllParentDir(String pathStr) {
         List<String> result = new ArrayList<>();
-        if (pathStr == null || pathStr.isEmpty()) {
+        if (Strings.isNullOrEmpty(pathStr)) {
             return result;
         }
 
