@@ -64,6 +64,15 @@ public class LogCommand extends BaseCommand {
     protected void doRun() {
         log.debug("log start path={} revisions={}", getStartPath(), get("revisions"));
         try {
+            if (revisions == null || revisions.isEmpty()) {
+                String head = Repository.INSTANCE.getRefs().readHead();
+                if (Strings.isNullOrEmpty(head)) {
+                    System.err.println("fatal: Not a valid object name: 'HEAD'.");
+                    exitCode = 1;
+                    return;
+                }
+            }
+
             RevList.RevSpecResult spec = RevList.parseRevSpecs(revisions);
 
             boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
