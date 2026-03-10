@@ -12,6 +12,7 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class Color {
 
+
     private static final String RESET = "\033[0m";
     private static final String BOLD = "\033[1m";
     private static final String RED = "\033[31m";
