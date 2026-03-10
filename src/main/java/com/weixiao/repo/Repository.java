@@ -181,12 +181,11 @@ public final class Repository {
      * 加载 commit 并返回其 message 首行；非 commit 或加载失败时返回空串。
      */
     public String getCommitShortMessage(String commitOid) {
-        try {
-            Commit commit = database.loadCommit(commitOid);
-            return Commit.firstLine(commit.getMessage());
-        } catch (IOException e) {
+        Commit commit = database.loadCommit(commitOid);
+        if (commit == null) {
             return "";
         }
+        return Commit.firstLine(commit.getMessage());
     }
 
     public static String computeBlobOid(byte[] data) {

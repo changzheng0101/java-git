@@ -3,7 +3,6 @@ package com.weixiao.repo;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.weixiao.obj.Commit;
-import com.weixiao.obj.GitObject;
 import com.weixiao.revision.Revision;
 
 import java.io.IOException;
@@ -101,28 +100,34 @@ public final class RevList {
      */
     public static void walk(RevSpecResult spec, Consumer<CommitEntry> consumer) throws IOException {
         Repository repo = Repository.INSTANCE;
+        ObjectDatabase db = repo.getDatabase();
         Collection<String> startRevisions = spec.startRevisions();
         Collection<String> excludeRevisions = spec.excludeRevisions();
 
-        // commitId -> Commit Obj
-        Map<String, Commit> commits = new HashMap<>();
-        // commitId -> flags
         Map<String, Set<CommitFlag>> flags = new HashMap<>();
         Comparator<String> byTimeDesc = (a, b) -> {
-            long ta = Commit.getAuthorTimestamp(commits.get(a).getAuthor());
-            long tb = Commit.getAuthorTimestamp(commits.get(b).getAuthor());
+            Commit ca = db.loadCommit(a);
+            Commit cb = db.loadCommit(b);
+            if (ca == null && cb == null) {
+                return a.compareTo(b);
+            }
+            if (ca == null) {
+                return 1;
+            }
+            if (cb == null) {
+                return -1;
+            }
+            long ta = Commit.getAuthorTimestamp(ca.getAuthor());
+            long tb = Commit.getAuthorTimestamp(cb.getAuthor());
             int c = Long.compare(tb, ta);
             return c != 0 ? c : a.compareTo(b);
         };
-        // queue to show commit 时间越晚的排在越前面，越先输出
         PriorityQueue<String> logQueue = new PriorityQueue<>(byTimeDesc);
-        // 用于给commit打标 时间越晚的排在越前面，越先输出
         PriorityQueue<String> processQueue = new PriorityQueue<>(byTimeDesc);
 
-        // init
         for (String rev : startRevisions) {
             String oid = Revision.parse(rev.trim()).getCommitId(repo);
-            loadCommit(oid, commits);
+            db.loadCommit(oid);
             processQueue.add(oid);
             mark(oid, CommitFlag.SEEN, flags);
         }
@@ -130,61 +135,48 @@ public final class RevList {
         if (!Iterables.isEmpty(excludeRevisions)) {
             for (String rev : excludeRevisions) {
                 String oid = Revision.parse(rev.trim()).getCommitId(repo);
-                loadCommit(oid, commits);
+                db.loadCommit(oid);
                 processQueue.add(oid);
                 mark(oid, CommitFlag.SEEN, flags);
                 mark(oid, CommitFlag.UNINTERESTING, flags);
             }
         }
 
-        // 遍历更改状态
         while (!processQueue.isEmpty()) {
             String oid = processQueue.poll();
-            Commit commit = commits.get(oid);
-
+            Commit commit = db.loadCommit(oid);
+            if (commit == null) {
+                continue;
+            }
             String parentCommitId = commit.getParentOid();
             if (parentCommitId != null) {
-                loadCommit(parentCommitId, commits);
+                db.loadCommit(parentCommitId);
                 mark(parentCommitId, CommitFlag.SEEN, flags);
                 processQueue.add(parentCommitId);
             }
-            if (marked(oid, CommitFlag.UNINTERESTING, flags)) {
+            if (marked(oid, CommitFlag.UNINTERESTING, flags) && parentCommitId != null) {
                 mark(parentCommitId, CommitFlag.UNINTERESTING, flags);
             }
             if (!marked(oid, CommitFlag.UNINTERESTING, flags)) {
                 logQueue.add(oid);
             }
 
-
             if (!logQueue.isEmpty()) {
                 String logCommitId = logQueue.poll();
-                consumer.accept(new CommitEntry(logCommitId, commits.get(logCommitId)));
+                Commit c = db.loadCommit(logCommitId);
+                if (c != null) {
+                    consumer.accept(new CommitEntry(logCommitId, c));
+                }
             }
         }
 
-        // 处理剩余数据
         while (!logQueue.isEmpty()) {
             String logCommitId = logQueue.poll();
-            consumer.accept(new CommitEntry(logCommitId, commits.get(logCommitId)));
+            Commit c = db.loadCommit(logCommitId);
+            if (c != null) {
+                consumer.accept(new CommitEntry(logCommitId, c));
+            }
         }
-    }
-
-    /**
-     * 加载 commit 到缓存；若已存在则不重复加载。
-     *
-     * @return 是否为 commit 且已放入缓存（非 commit 不放入，返回 false）
-     */
-    private static void loadCommit(String oid, Map<String, Commit> commits)
-            throws IOException {
-        if (commits.containsKey(oid)) {
-            return;
-        }
-        GitObject obj = Repository.INSTANCE.getDatabase().load(oid);
-
-        if (!"commit".equals(obj.getType())) {
-            throw new RuntimeException("commitId不合法");
-        }
-        commits.put(oid, Commit.fromBytes(obj.toBytes()));
     }
 
     /**

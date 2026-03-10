@@ -1,6 +1,7 @@
 package com.weixiao.diff;
 
 import com.weixiao.diff.DiffEntry.DiffStatus;
+import com.weixiao.obj.Commit;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.ObjectDatabase;
@@ -33,10 +34,13 @@ public final class TreeDiff {
     public static List<DiffEntry> diff(String commitIdA, String commitIdB, Path prefix)
             throws IOException {
         ObjectDatabase db = Repository.INSTANCE.getDatabase();
-        Tree treeA = (commitIdA == null || commitIdA.isEmpty())
-            ? null
-            : getTreeAtPrefix(db, db.loadCommit(commitIdA).getTreeOid(), prefix);
-        Tree treeB = getTreeAtPrefix(db, db.loadCommit(commitIdB).getTreeOid(), prefix);
+        Commit ca = (commitIdA == null || commitIdA.isEmpty()) ? null : db.loadCommit(commitIdA);
+        Commit cb = db.loadCommit(commitIdB);
+        Tree treeA = (ca == null) ? null : getTreeAtPrefix(db, ca.getTreeOid(), prefix);
+        if (cb == null) {
+            throw new IOException("not a commit: " + commitIdB);
+        }
+        Tree treeB = getTreeAtPrefix(db, cb.getTreeOid(), prefix);
         return compareTrees(db, treeA, treeB, prefix);
     }
 

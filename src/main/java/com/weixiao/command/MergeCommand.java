@@ -1,7 +1,7 @@
 package com.weixiao.command;
 
 import com.weixiao.obj.Commit;
-import com.weixiao.obj.GitObject;
+import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 import com.weixiao.revision.Revision;
 import com.weixiao.revision.RevisionParseException;
@@ -25,14 +25,6 @@ public class MergeCommand extends BaseCommand {
     private String rev;
 
     @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (rev != null && !rev.isEmpty()) {
-            params.put("rev", rev.trim());
-        }
-    }
-
-    @Override
     protected void doRun() {
         try {
             String headOid = repo.getRefs().readHead();
@@ -41,7 +33,7 @@ public class MergeCommand extends BaseCommand {
                 exitCode = 1;
                 return;
             }
-            String otherOid = Revision.parse(get("rev")).getCommitId(repo);
+            String otherOid = Revision.parse(rev).getCommitId(repo);
             String bca = findBca(headOid, otherOid);
             if (bca == null) {
                 System.err.println("fatal: no common ancestor found.");
@@ -60,6 +52,8 @@ public class MergeCommand extends BaseCommand {
         }
     }
 
+
+
     /**
      * 用 parent1/parent2 标记沿父指针回溯，首次同时拥有两标记的 commit 即为 BCA。
      * 仅考虑线性历史（每个 commit 至多一个 parent）。
@@ -70,17 +64,17 @@ public class MergeCommand extends BaseCommand {
         }
 
         Repository repo = Repository.INSTANCE;
-        Map<String, Commit> commits = new HashMap<>();
+        ObjectDatabase db = repo.getDatabase();
         Map<String, Set<BcaFlag>> flags = new HashMap<>();
-        loadCommit(repo, oid1, commits);
-        loadCommit(repo, oid2, commits);
+        db.loadCommit(oid1);
+        db.loadCommit(oid2);
         flags.put(oid1, EnumSet.of(BcaFlag.PARENT1));
         flags.put(oid2, EnumSet.of(BcaFlag.PARENT2));
         Deque<String> queue = new ArrayDeque<>(Arrays.asList(oid1, oid2));
 
         while (!queue.isEmpty()) {
             String oid = queue.poll();
-            Commit c = commits.get(oid);
+            Commit c = db.loadCommit(oid);
             if (c == null) {
                 continue;
             }
@@ -88,7 +82,7 @@ public class MergeCommand extends BaseCommand {
             if (parentOid == null) {
                 continue;
             }
-            loadCommit(repo, parentOid, commits);
+            db.loadCommit(parentOid);
             Set<BcaFlag> parentFlags = flags.computeIfAbsent(parentOid, k -> new HashSet<>());
             parentFlags.addAll(flags.get(oid));
             if (parentFlags.size() == 2) {
@@ -97,17 +91,6 @@ public class MergeCommand extends BaseCommand {
             queue.add(parentOid);
         }
         return null;
-    }
-
-    private static void loadCommit(Repository repo, String oid, Map<String, Commit> commits) throws IOException {
-        if (commits.containsKey(oid)) {
-            return;
-        }
-        GitObject obj = repo.getDatabase().load(oid);
-        if (!"commit".equals(obj.getType())) {
-            throw new IOException("not a commit: " + oid);
-        }
-        commits.put(oid, Commit.fromBytes(obj.toBytes()));
     }
 
     private enum BcaFlag {

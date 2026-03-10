@@ -21,7 +21,9 @@ import java.security.NoSuchAlgorithmException;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import java.util.zip.DeflaterOutputStream;
@@ -38,6 +40,11 @@ public final class ObjectDatabase {
     private static final Logger log = LoggerFactory.getLogger(ObjectDatabase.class);
 
     private Path objectsDir;
+
+    /**
+     * commit 加载缓存，避免重复加载。
+     */
+    private final Map<String, Commit> commitCache = new HashMap<>();
 
     public ObjectDatabase(Path objectsDir) {
         this.objectsDir = objectsDir;
@@ -119,12 +126,24 @@ public final class ObjectDatabase {
         return (Tree) obj;
     }
 
-    public Commit loadCommit(String commitId) throws IOException {
-        GitObject obj = this.load(commitId);
-        if (!"commit".equals(obj.getType())) {
-            throw new IOException("not a commit: " + commitId);
+    /**
+     * 按 oid 加载 commit 对象，使用成员缓存避免重复加载；不存在或类型非 commit 时返回 null。
+     */
+    public Commit loadCommit(String commitId) {
+        if (commitCache.containsKey(commitId)) {
+            return commitCache.get(commitId);
         }
-        return (Commit) obj;
+        try {
+            GitObject obj = this.load(commitId);
+            if (!"commit".equals(obj.getType())) {
+                return null;
+            }
+            Commit c = (Commit) obj;
+            commitCache.put(commitId, c);
+            return c;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /**

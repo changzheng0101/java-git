@@ -61,9 +61,11 @@ public abstract class BaseCommand implements Runnable, CommandLine.IExitCodeGene
     protected abstract void doRun();
 
     /**
-     * 子类在 initParams() 内将 @Option / @Parameters 等转换为 params 键值；布尔标志为 true 时 put(key, "")。
+     * 子类可选覆盖：将 @Option / @Parameters 等转换为 params 键值；布尔标志为 true 时 put(key, "")。
+     * 默认空实现，不需要时可不覆盖。
      */
-    protected abstract void initParams();
+    protected void initParams() {
+    }
 
     /**
      * 返回 jit 工作目录（如 init 不依赖仓库时使用）。
