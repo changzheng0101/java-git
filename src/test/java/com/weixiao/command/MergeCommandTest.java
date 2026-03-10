@@ -3,6 +3,7 @@ package com.weixiao.command;
 import com.weixiao.Jit;
 import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.obj.Commit;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
 import com.weixiao.repo.SysRef;
@@ -62,28 +63,62 @@ class MergeCommandTest {
         assertThat(result.getErr()).contains("Not a valid object name: 'HEAD'");
     }
 
+    /**
+     * 场景：线性历史下从 dev merge master，命令成功并输出 "Merge made"，产生新的 merge commit。
+     */
     @Test
-    @DisplayName("线性历史下 merge 另一分支输出 BCA 为共同祖先 commit id")
-    void merge_linearHistory_printsBca(@TempDir Path tempDir) throws Exception {
+    @DisplayName("线性历史下 merge 另一分支成功并输出 Merge made")
+    void merge_linearHistory_printsMergeMade(@TempDir Path tempDir) throws Exception {
         initRepoWithBranchAndExtraCommit(tempDir);
-        Repository.find(tempDir);
-        String secondOid = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "master"));
-
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(result.getOutput()).contains("Best common ancestor: " + secondOid);
+        assertThat(result.getOutput()).contains("Merge made.");
     }
 
+    /**
+     * 场景：在 dev 上执行 merge master（线性历史：dev 比 master 多一个提交），产生一个双 parent 的 merge commit，
+     * 第一个 parent 为当前 HEAD（dev 的 tip），第二个为被合并分支（master）的 tip，且 HEAD 更新为该新 commit。
+     */
     @Test
-    @DisplayName("merge 当前分支（HEAD 与参数指向同一 commit）时 BCA 即该 commit")
-    void merge_sameBranch_bcaIsHead(@TempDir Path tempDir) throws Exception {
+    @DisplayName("merge 产生双 parent commit 且 HEAD 指向新 commit")
+    void merge_linearHistory_createsTwoParentCommitAndUpdatesHead(@TempDir Path tempDir) throws Exception {
+        initRepoWithBranchAndExtraCommit(tempDir);
+        Repository.find(tempDir);
+        String devTip = Repository.INSTANCE.getRefs().readHead();
+        String masterTip = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "master"));
+        assertThat(devTip).isNotEqualTo(masterTip);
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
+
+        String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
+        assertThat(headAfterMerge).isNotEqualTo(devTip).isNotEqualTo(masterTip);
+
+        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(headAfterMerge);
+        assertThat(mergeCommit).isNotNull();
+        assertThat(mergeCommit.getParentOids()).hasSize(2);
+        assertThat(mergeCommit.getParentOids()).containsExactlyInAnyOrder(devTip, masterTip);
+        assertThat(mergeCommit.getMessage()).contains("Merge branch");
+    }
+
+    /**
+     * 场景：当前已在 master 上，执行 merge master（HEAD 与参数指向同一 commit），仍会创建一个 merge commit（双 parent 均为同一 oid），HEAD 指向新 commit。
+     */
+    @Test
+    @DisplayName("merge 当前分支时仍创建 merge commit 并更新 HEAD")
+    void merge_sameBranch_createsMergeCommit(@TempDir Path tempDir) throws Exception {
         initRepoWithTwoCommits(tempDir);
         Repository.find(tempDir);
         String headOid = Repository.INSTANCE.getRefs().readHead();
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(result.getOutput()).contains("Best common ancestor: " + headOid);
+        assertThat(result.getOutput()).contains("Merge made.");
+
+        String newHead = Repository.INSTANCE.getRefs().readHead();
+        assertThat(newHead).isNotEqualTo(headOid);
+        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(newHead);
+        assertThat(mergeCommit.getParentOids()).hasSize(2);
+        assertThat(mergeCommit.getParentOids()).containsExactly(headOid, headOid);
     }
 
     @Test

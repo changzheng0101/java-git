@@ -10,7 +10,16 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * jit merge：将指定分支与当前 HEAD 合并。
@@ -40,7 +49,23 @@ public class MergeCommand extends BaseCommand {
                 exitCode = 1;
                 return;
             }
-            System.out.println("Best common ancestor: " + bca);
+            Commit headCommit = repo.getDatabase().loadCommit(headOid);
+            if (headCommit == null) {
+                System.err.println("fatal: HEAD commit not found.");
+                exitCode = 1;
+                return;
+            }
+            String author = formatAuthor();
+            String mergeMsg = "Merge branch '" + rev + "'";
+            Commit mergeCommit = new Commit(
+                    headCommit.getTreeOid(),
+                    Arrays.asList(headOid, otherOid),
+                    author,
+                    author,
+                    mergeMsg);
+            String mergeOid = repo.getDatabase().store(mergeCommit);
+            repo.getRefs().updateCurrentBranch(mergeOid);
+            System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(mergeOid));
         } catch (RevisionParseException e) {
             log.warn("merge parse revision failed", e);
             System.err.println("fatal: " + e.getMessage());
@@ -91,6 +116,12 @@ public class MergeCommand extends BaseCommand {
             queue.add(parentOid);
         }
         return null;
+    }
+
+    private static String formatAuthor() {
+        String user = System.getProperty("user.name", "user");
+        long sec = System.currentTimeMillis() / 1000;
+        return user + " <" + user + "@local> " + sec + " +0000";
     }
 
     private enum BcaFlag {

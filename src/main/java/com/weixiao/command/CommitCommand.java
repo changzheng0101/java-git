@@ -13,6 +13,7 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,7 +63,10 @@ public class CommitCommand extends BaseCommand {
             log.debug("parent oid={}", parentOid);
             String author = formatAuthor();
             String msg = get("message");
-            Commit commit = new Commit(treeOid, parentOid, author, author, msg);
+            List<String> parents = (parentOid == null || parentOid.isEmpty())
+                    ? Collections.emptyList()
+                    : Collections.singletonList(parentOid);
+            Commit commit = new Commit(treeOid, parents, author, author, msg);
             String commitOid = repo.getDatabase().store(commit);
             log.debug("stored commit oid={}", commitOid);
 

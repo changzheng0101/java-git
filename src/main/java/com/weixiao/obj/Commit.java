@@ -7,41 +7,53 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 
 /**
- * Git commit 对象：tree、author、committer、message。
- * 序列化格式与 Git 一致：tree &lt;oid&gt;\nauthor ...\ncommitter ...\n\nmessage
+ * Git commit 对象：tree、parents、author、committer、message。
+ * 序列化格式与 Git 一致：tree &lt;oid&gt;\n[parent &lt;oid&gt;\n]*author ...\ncommitter ...\n\nmessage
  */
 @Getter
 public final class Commit implements GitObject {
 
     private final String treeOid;
-    private final String parentOid; // 可选，首次提交为 null
+    private final List<String> parentOids;
     private final String author;
     private final String committer;
     private final String message;
 
     /**
-     * 用 tree、父提交、作者、提交者、提交信息构造 commit；parentOid 可为 null 表示首次提交，message 为 null 时当作空字符串。
+     * 用 tree、父提交列表、作者、提交者、提交信息构造 commit；parentOids 为 null 或空表示首次提交，message 为 null 时当作空字符串。
      */
-    public Commit(String treeOid, String parentOid, String author, String committer, String message) {
+    public Commit(String treeOid, List<String> parentOids, String author, String committer, String message) {
         this.treeOid = treeOid;
-        this.parentOid = parentOid;
+        this.parentOids = parentOids == null || parentOids.isEmpty()
+                ? Collections.emptyList()
+                : List.copyOf(parentOids);
         this.author = author;
         this.committer = committer;
         this.message = Strings.nullToEmpty(message);
     }
 
     /**
-     * 构造首次提交（无 parent），author 同时作为 committer。
+     * 兼容单 parent 逻辑：返回第一个 parent，无 parent 时返回 null。
      */
-    public static Commit first(String treeOid, String author, String message) {
-        return new Commit(treeOid, null, author, author, message);
+    public String getParentOid() {
+        return parentOids.isEmpty() ? null : parentOids.get(0);
     }
 
     /**
-     * 从对象体字节解析出 commit，格式：tree &lt;oid&gt;\n[parent &lt;oid&gt;\n]author ...\ncommitter ...\n\nmessage。
+     * 构造首次提交（无 parent），author 同时作为 committer。
+     */
+    public static Commit first(String treeOid, String author, String message) {
+        return new Commit(treeOid, Collections.emptyList(), author, author, message);
+    }
+
+    /**
+     * 从对象体字节解析出 commit，格式：tree &lt;oid&gt;\n[parent &lt;oid&gt;\n]*author ...\ncommitter ...\n\nmessage。
      */
     public static Commit fromBytes(byte[] body) {
         String raw = new String(body, StandardCharsets.UTF_8);
@@ -52,16 +64,14 @@ public final class Commit implements GitObject {
         String header = raw.substring(0, headerEnd);
         String message = raw.substring(headerEnd + 2);
         String treeOid = null;
-        String parentOid = null;
+        List<String> parents = new ArrayList<>();
         String author = null;
         String committer = null;
         for (String line : header.split("\n")) {
             if (line.startsWith("tree ")) {
                 treeOid = line.substring(5).trim();
             } else if (line.startsWith("parent ")) {
-                if (parentOid == null) {
-                    parentOid = line.substring(7).trim();
-                }
+                parents.add(line.substring(7).trim());
             } else if (line.startsWith("author ")) {
                 author = line.substring(7);
             } else if (line.startsWith("committer ")) {
@@ -71,7 +81,7 @@ public final class Commit implements GitObject {
         if (treeOid == null || author == null || committer == null) {
             throw new IllegalArgumentException("invalid commit: missing tree/author/committer");
         }
-        return new Commit(treeOid, parentOid, author, committer, message);
+        return new Commit(treeOid, parents, author, committer, message);
     }
 
     /**
@@ -155,13 +165,15 @@ public final class Commit implements GitObject {
     }
 
     /**
-     * 返回 Git commit 格式字节：tree、可选的 parent、author、committer、空行、message。
+     * 返回 Git commit 格式字节：tree、多个 parent、author、committer、空行、message。
      */
     @Override
     public byte[] toBytes() {
         StringBuilder sb = new StringBuilder();
         sb.append("tree ").append(treeOid).append("\n");
-        if (parentOid != null) sb.append("parent ").append(parentOid).append("\n");
+        for (String p : parentOids) {
+            sb.append("parent ").append(p).append("\n");
+        }
         sb.append("author ").append(author).append("\n");
         sb.append("committer ").append(committer).append("\n");
         sb.append("\n");

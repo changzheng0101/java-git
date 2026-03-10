@@ -1,11 +1,14 @@
 package com.weixiao.obj;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -80,5 +83,35 @@ class CommitTest {
     @DisplayName("firstLine null 或空返回空串")
     void firstLine_nullOrEmpty_returnsEmpty(String s) {
         assertThat(Commit.firstLine(s)).isEmpty();
+    }
+
+    @Nested
+    @DisplayName("多 parent 支持")
+    class MultipleParents {
+
+        /**
+         * 场景：commit 对象体包含多行 parent &lt;oid&gt;，fromBytes 解析后 toBytes 再解析，parents 顺序与内容一致。
+         */
+        @Test
+        @DisplayName("fromBytes 解析多个 parent 行，toBytes 再 fromBytes 后 parents 一致")
+        void fromBytes_multipleParents_roundtripsCorrectly() {
+            String body = "tree abc123\nparent p1\nparent p2\nparent p3\n"
+                    + "author " + AUTHOR_FULL + "\ncommitter " + AUTHOR_FULL + "\n\nmsg";
+            Commit c = Commit.fromBytes(body.getBytes(StandardCharsets.UTF_8));
+            assertThat(c.getParentOids()).containsExactly("p1", "p2", "p3");
+            byte[] serialized = c.toBytes();
+            Commit c2 = Commit.fromBytes(serialized);
+            assertThat(c2.getParentOids()).isEqualTo(c.getParentOids());
+        }
+
+        /**
+         * 场景：commit 有多个 parent 时，兼容旧逻辑的 getParentOid() 应返回第一个 parent。
+         */
+        @Test
+        @DisplayName("多 parent 时 getParentOid 返回第一个")
+        void getParentOid_multipleParents_returnsFirst() {
+            Commit c = new Commit("tree1", Arrays.asList("first", "second"), AUTHOR_FULL, AUTHOR_FULL, "msg");
+            assertThat(c.getParentOid()).isEqualTo("first");
+        }
     }
 }
