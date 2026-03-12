@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 /**
  * Git revision 语法 AST：@ = HEAD；<refname> = 分支/远程/oid；<rev>^ = 父提交；<rev>~<n> = 第 n 代祖先。
  */
-public sealed interface Revision {
+public interface Revision {
 
     Kind getKind();
 
@@ -33,22 +33,39 @@ public sealed interface Revision {
     enum Kind {REF, PARENT, ANCESTOR}
 
     static Revision parse(String s) {
-        if (s == null) throw new RevisionParseException("revision string is null");
-        if ((s = s.trim()).isEmpty()) throw new RevisionParseException("empty revision");
+        if (s == null) {
+            throw new RevisionParseException("revision string is null");
+        }
+        s = s.trim();
+        if (s.isEmpty()) {
+            throw new RevisionParseException("empty revision");
+        }
 
-        if (s.endsWith("^")) return new Parent(parse(s.substring(0, s.length() - 1)));
+        if (s.endsWith("^")) {
+            return new Parent(parse(s.substring(0, s.length() - 1)));
+        }
 
-        var m = Pattern.compile("^(.+)~(\\d*)$").matcher(s);
+        java.util.regex.Matcher m = Pattern.compile("^(.+)~(\\d*)$").matcher(s);
         if (m.matches()) {
             String n = m.group(2);
             return new Ancestor(parse(m.group(1)), n.isEmpty() ? 1 : Integer.parseInt(n));
         }
-        return new Ref(s.equals("@") ? "HEAD" : s);
+        return new Ref("@".equals(s) ? "HEAD" : s);
     }
 
-    record Ref(String name) implements Revision {
-        public Ref {
-            if (name == null || name.isEmpty()) throw new IllegalArgumentException("ref name must not be empty");
+    final class Ref implements Revision {
+
+        private final String name;
+
+        public Ref(String name) {
+            if (name == null || name.isEmpty()) {
+                throw new IllegalArgumentException("ref name must not be empty");
+            }
+            this.name = name;
+        }
+
+        public String name() {
+            return name;
         }
 
         @Override
@@ -121,9 +138,19 @@ public sealed interface Revision {
 
     }
 
-    record Parent(Revision rev) implements Revision {
-        public Parent {
-            if (rev == null) throw new IllegalArgumentException("rev must not be null");
+    final class Parent implements Revision {
+
+        private final Revision rev;
+
+        public Parent(Revision rev) {
+            if (rev == null) {
+                throw new IllegalArgumentException("rev must not be null");
+            }
+            this.rev = rev;
+        }
+
+        public Revision rev() {
+            return rev;
         }
 
         @Override
@@ -135,15 +162,35 @@ public sealed interface Revision {
         public String getCommitId(Repository repo) throws IOException {
             String base = rev.getCommitId(repo);
             String parent = parseParentOid(repo.getDatabase(), base);
-            if (parent == null) throw new RevisionParseException("no parent for commit: " + base);
+            if (parent == null) {
+                throw new RevisionParseException("no parent for commit: " + base);
+            }
             return parent;
         }
     }
 
-    record Ancestor(Revision rev, int n) implements Revision {
-        public Ancestor {
-            if (rev == null) throw new IllegalArgumentException("rev must not be null");
-            if (n < 1) throw new IllegalArgumentException("n must be >= 1");
+    final class Ancestor implements Revision {
+
+        private final Revision rev;
+        private final int n;
+
+        public Ancestor(Revision rev, int n) {
+            if (rev == null) {
+                throw new IllegalArgumentException("rev must not be null");
+            }
+            if (n < 1) {
+                throw new IllegalArgumentException("n must be >= 1");
+            }
+            this.rev = rev;
+            this.n = n;
+        }
+
+        public Revision rev() {
+            return rev;
+        }
+
+        public int n() {
+            return n;
         }
 
         @Override
@@ -156,14 +203,16 @@ public sealed interface Revision {
             String cur = rev.getCommitId(repo);
             for (int i = 0; i < n; i++) {
                 String parent = parseParentOid(repo.getDatabase(), cur);
-                if (parent == null) throw new RevisionParseException("no ancestor at depth " + (i + 1) + " for " + cur);
+                if (parent == null) {
+                    throw new RevisionParseException("no ancestor at depth " + (i + 1) + " for " + cur);
+                }
                 cur = parent;
             }
             return cur;
         }
     }
 
-    private static String parseParentOid(ObjectDatabase db, String oid) throws IOException {
+    static String parseParentOid(ObjectDatabase db, String oid) throws IOException {
         GitObject raw = db.load(oid);
         if (!"commit".equals(raw.getType())) {
             throw new RevisionParseException("not a commit: " + oid);

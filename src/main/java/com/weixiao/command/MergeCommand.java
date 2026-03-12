@@ -1,8 +1,10 @@
 package com.weixiao.command;
 
 import com.weixiao.obj.Commit;
+import com.weixiao.repo.Migration;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
+import com.weixiao.repo.TreeBuilder;
 import com.weixiao.revision.Revision;
 import com.weixiao.revision.RevisionParseException;
 import org.slf4j.Logger;
@@ -11,21 +13,20 @@ import picocli.CommandLine.*;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * jit merge：将指定分支与当前 HEAD 合并。
- * 当前仅支持线性历史，找到两端的 Best Common Ancestor (BCA) 并输出。
+ * 当前仅实现一个简化版本：计算 base（BCA）到 merge 分支 tip 的净变化，并把这部分变化应用到当前工作区与 index，
+ * 然后从更新后的 index 写一个新的 merge commit（parents=HEAD, merge_tip）。
  */
-@Command(name = "merge", mixinStandardHelpOptions = true, description = "合并指定分支到当前 HEAD（当前仅计算并输出 BCA）")
+@Command(name = "merge", mixinStandardHelpOptions = true, description = "合并指定分支到当前 HEAD（简化版：应用 merge 分支净变化并写 merge commit）")
 public class MergeCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(MergeCommand.class);
@@ -42,30 +43,26 @@ public class MergeCommand extends BaseCommand {
                 exitCode = 1;
                 return;
             }
-            String otherOid = Revision.parse(rev).getCommitId(repo);
-            String bca = findBca(headOid, otherOid);
-            if (bca == null) {
+            String mergeTipOid = Revision.parse(rev).getCommitId(repo);
+            String baseOid = findBca(headOid, mergeTipOid);
+            if (baseOid == null) {
                 System.err.println("fatal: no common ancestor found.");
                 exitCode = 1;
                 return;
             }
-            Commit headCommit = repo.getDatabase().loadCommit(headOid);
-            if (headCommit == null) {
-                System.err.println("fatal: HEAD commit not found.");
-                exitCode = 1;
-                return;
-            }
+
+            Migration migration = new Migration(baseOid, mergeTipOid);
+            migration.validate();
+            migration.applyChanges();
+
+            repo.getIndex().load();
+            String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());
             String author = formatAuthor();
             String mergeMsg = "Merge branch '" + rev + "'";
-            Commit mergeCommit = new Commit(
-                    headCommit.getTreeOid(),
-                    Arrays.asList(headOid, otherOid),
-                    author,
-                    author,
-                    mergeMsg);
-            String mergeOid = repo.getDatabase().store(mergeCommit);
-            repo.getRefs().updateCurrentBranch(mergeOid);
-            System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(mergeOid));
+            Commit mergeCommit = new Commit(treeOid, Arrays.asList(headOid, mergeTipOid), author, author, mergeMsg);
+            String newCommitOid = repo.getDatabase().store(mergeCommit);
+            repo.getRefs().updateCurrentBranch(newCommitOid);
+            System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(newCommitOid));
         } catch (RevisionParseException e) {
             log.warn("merge parse revision failed", e);
             System.err.println("fatal: " + e.getMessage());

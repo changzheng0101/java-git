@@ -1,23 +1,16 @@
 package com.weixiao.command;
 
 import com.weixiao.obj.Commit;
-import com.weixiao.obj.Tree;
-import com.weixiao.obj.TreeEntry;
-import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
-import com.weixiao.repo.Repository;
+import com.weixiao.repo.TreeBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
 
 /**
  * jit commit - 将暂存区（index）中的文件提交到仓库。
@@ -56,7 +49,7 @@ public class CommitCommand extends BaseCommand {
                 exitCode = 1;
                 return;
             }
-            String treeOid = buildTreeFromIndex(repo, repo.getIndex().getEntries(), "");
+            String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());
             log.debug("stored root tree oid={}", treeOid);
 
             String parentOid = repo.getRefs().readHead();
@@ -78,43 +71,6 @@ public class CommitCommand extends BaseCommand {
             System.err.println("fatal: " + e.getMessage());
             exitCode = 1;
         }
-    }
-
-    /**
-     * 从 index 的扁平 path 列表递归构建 Tree。
-     * prefix 为当前目录相对仓库根的路径（如 "" 或 "dir/"），只处理 path.startsWith(prefix) 的条目。
-     * 返回当前目录的 tree oid。
-     */
-    private String buildTreeFromIndex(Repository repo, List<Index.Entry> indexEntries, String prefix) throws IOException {
-        List<TreeEntry> entries = new ArrayList<>();
-        String prefixSlash = prefix.isEmpty() ? "" : prefix;
-
-        Set<String> dirNames = new HashSet<>();
-        for (Index.Entry e : indexEntries) {
-            if (!e.getPath().startsWith(prefixSlash)) continue;
-            String local = prefixSlash.isEmpty() ? e.getPath() : e.getPath().substring(prefixSlash.length());
-            if (local.isEmpty()) continue;
-            if (!local.contains("/")) {
-                // normal file
-                entries.add(new TreeEntry(e.getMode(), local, e.getOid()));
-                log.debug("tree entry blob {} mode={} oid={}", local, e.getMode(), e.getOid());
-            } else {
-                // directory
-                dirNames.add(local.substring(0, local.indexOf('/')));
-            }
-        }
-
-        for (String dirName : dirNames) {
-            String subPrefix = prefixSlash + dirName + "/";
-            String childTreeOid = buildTreeFromIndex(repo, indexEntries, subPrefix);
-            entries.add(new TreeEntry("40000", dirName, childTreeOid));
-            log.debug("tree entry dir {} -> {}", dirName, childTreeOid);
-        }
-
-        Tree tree = new Tree(entries);
-        String treeOid = repo.getDatabase().store(tree);
-        log.debug("stored tree prefix={} oid={}", prefix, treeOid);
-        return treeOid;
     }
 
     /**

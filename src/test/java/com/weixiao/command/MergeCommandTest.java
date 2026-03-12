@@ -96,7 +96,7 @@ class MergeCommandTest {
         Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(headAfterMerge);
         assertThat(mergeCommit).isNotNull();
         assertThat(mergeCommit.getParentOids()).hasSize(2);
-        assertThat(mergeCommit.getParentOids()).containsExactlyInAnyOrder(devTip, masterTip);
+        assertThat(mergeCommit.getParentOids()).containsExactly(devTip, masterTip);
         assertThat(mergeCommit.getMessage()).contains("Merge branch");
     }
 
@@ -119,6 +119,69 @@ class MergeCommandTest {
         Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(newHead);
         assertThat(mergeCommit.getParentOids()).hasSize(2);
         assertThat(mergeCommit.getParentOids()).containsExactly(headOid, headOid);
+    }
+
+    /**
+     * 场景：The root commit A contains two files, f.txt and g.txt, both containing the value 1。
+     * 在 master 上基于 A 提交 B，将 f.txt 的内容改为 2；在 topic 分支上也基于 A 提交 C，将 g.txt 的内容改为 3。
+     * 在 master 上执行 merge topic 后，不存在冲突，产生一个新的 merge commit（parents=[B,C]），
+     * 合并结果应同时包含两侧的修改：f.txt=2，g.txt=3。
+     */
+    @Test
+    @DisplayName("非冲突分支合并：一侧改 f.txt，另一侧改 g.txt，merge 后两侧修改都保留")
+    void merge_nonConflictingBranches_preservesBothSidesChanges(@TempDir Path tempDir) throws Exception {
+        // 初始化仓库并创建根提交 A：f.txt=1, g.txt=1
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+        Path g = tempDir.resolve("g.txt");
+        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        Files.write(g, "1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+
+        // 从 A 创建 topic 分支
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        // 在 master 上提交 B：修改 f.txt=2
+        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        // 切换到 topic，并基于 A 提交 C：修改 g.txt=3
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.write(g, "3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        // 回到 master，在 master 上执行 merge topic 之前，记录两侧分支的 tip（B, C）
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Repository.find(tempDir);
+        String masterTipBeforeMerge = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "master"));
+        String topicTipBeforeMerge = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "topic"));
+
+        // 在 master 上执行 merge topic
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Merge made.");
+
+        // merge 必须创建一个新的 commit，且其 parents 为 [masterTipBeforeMerge, topicTipBeforeMerge]
+        String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
+        assertThat(headAfterMerge)
+                .isNotNull()
+                .isNotEqualTo(masterTipBeforeMerge)
+                .isNotEqualTo(topicTipBeforeMerge);
+        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(headAfterMerge);
+        assertThat(mergeCommit).isNotNull();
+        assertThat(mergeCommit.getParentOids()).hasSize(2);
+        assertThat(mergeCommit.getParentOids()).containsExactly(masterTipBeforeMerge, topicTipBeforeMerge);
+
+        // 合并后工作区应同时包含两侧修改：f.txt=2，g.txt=3
+        String fContent = new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
+        String gContent = new String(Files.readAllBytes(g), StandardCharsets.UTF_8);
+        assertThat(fContent).isEqualTo("2");
+        assertThat(gContent).isEqualTo("3");
     }
 
     @Test
