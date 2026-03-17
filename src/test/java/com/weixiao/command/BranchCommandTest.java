@@ -22,7 +22,16 @@ class BranchCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
-    /** 在给定目录创建仓库并做一次 commit，便于 branch 测试。 */
+    /**
+     * 在给定目录创建仓库并做一次 commit，便于 branch 测试。
+     *
+     * 文本示意图：
+     *
+     *   master: A   (A 为首个提交 "first")
+     *
+     * - init 后创建 f.txt 并提交 first；
+     * - HEAD -> master，master -> A。
+     */
     private static void initRepoWithOneCommit(Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");

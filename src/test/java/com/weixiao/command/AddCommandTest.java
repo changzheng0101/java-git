@@ -96,8 +96,30 @@ class AddCommandTest {
     }
 
     /**
-     * 避免 hello.txt 与 hello.txt/a.txt 同时存在：先 add hello.txt，再 add hello.txt/a.txt 后，
-     * index 中只保留 hello.txt/a.txt。
+     * 场景：避免 hello.txt 与 hello.txt/a.txt 同时存在于 index 中。
+     *
+     * 文本示意图（index 中路径演变）：
+     *
+     *  1) 初始：index 为空
+     *       []
+     *
+     *  2) 工作区创建文件：
+     *       hello.txt        (文件)
+     *
+     *     执行：jit add hello.txt
+     *
+     *     index：
+     *       hello.txt
+     *
+     *  3) 删除文件并改成目录：
+     *       hello.txt/       (目录)
+     *       hello.txt/a.txt  (文件)
+     *
+     *     执行：jit add hello.txt/a.txt
+     *
+     *     期望最终 index：
+     *       hello.txt/a.txt
+     *     不再包含原来的文件条目 "hello.txt"。
      */
     @Test
     @DisplayName("add hello.txt 再 add hello.txt/a.txt 时只保留 hello.txt/a.txt")

@@ -20,6 +20,20 @@ class LogCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
+    /**
+     * 初始化一个简单线性历史，便于 log 测试。
+     *
+     * 文本示意图：
+     *
+     *   master:  A --- B
+     *             ^     ^
+     *             |     |
+     *          "first" "second"
+     *
+     * - A：写入 f.txt="v1"，add 后 commit -m "first"；
+     * - B：修改 f.txt="v2"，add 后 commit -m "second"；
+     * - HEAD -> master -> B。
+     */
     private static void initRepoWithTwoCommits(Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
@@ -148,6 +162,23 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 
+        /**
+         * 文本示意图：
+         *
+         *   master:  A --- B
+         *             ^     ^
+         *             |     |
+         *          "first" "second"
+         *
+         *   dev:               (从 B 分出)
+         *                       \
+         *                        C
+         *                        ^
+         *                        |
+         *                     "third"
+         *
+         * - log dev 应按从新到旧输出 C、B、A（三个提交）。
+         */
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "dev", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         String out = result.getOutput();
@@ -165,6 +196,22 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 
+        /**
+         * 文本示意图：
+         *
+         *   master:  A --- B
+         *             ^     ^
+         *             |     |
+         *          "first" "second"
+         *
+         *   dev:               (从 B 分出)
+         *                       \
+         *                        C ("third")
+         *
+         * - master 可达：A, B
+         * - dev 可达：A, B, C
+         * - master..dev 应只包含在 dev 可达但 master 不可达的提交，即只输出 C（"third"）。
+         */
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master..dev", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         String out = result.getOutput();

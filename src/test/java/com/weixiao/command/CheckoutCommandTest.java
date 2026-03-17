@@ -23,7 +23,16 @@ class CheckoutCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
-    /** 在给定目录创建仓库并做一次 commit，便于 checkout/branch 测试。 */
+    /**
+     * 在给定目录创建仓库并做一次 commit，便于 checkout/branch 测试。
+     *
+     * 文本示意图：
+     *
+     *   master: A  (A 的提交消息由参数 message 决定)
+     *
+     * - init 后写入 f.txt="v1"，add 并 commit -m message；
+     * - HEAD -> master，master -> A，返回 A 的 oid。
+     */
     private static String initRepoWithOneCommit(Path tempDir, String message) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
@@ -73,6 +82,18 @@ class CheckoutCommandTest {
         ExecuteResult secondCommit = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
         assertThat(secondCommit.getExitCode()).isEqualTo(0);
 
+        /**
+         * 文本示意图：
+         *
+         *   master:  A --- B
+         *             ^     ^
+         *             |     |
+         *          "first" "second"
+         *
+         * - 当前 HEAD 在 B（a.txt="v2"）；
+         * - find parent(B)=A 作为 firstCommitOid；
+         * - checkout firstCommitOid 后，HEAD 应指向 A，工作区 a.txt 回到 "v1"。
+         */
         Repository repo = Repository.find(tempDir);
         String headAfterSecond = repo.getRefs().readHead();
         GitObject headObj = repo.getDatabase().load(headAfterSecond);

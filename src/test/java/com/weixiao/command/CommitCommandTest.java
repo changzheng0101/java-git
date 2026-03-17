@@ -71,6 +71,23 @@ class CommitCommandTest {
 
     /**
      * 在嵌套目录结构中 add 后再 commit，应成功创建包含子目录的 Tree（从 index 构建）。
+     *
+     * 文本示意图（工作区路径结构）：
+     *
+     *   工作区：
+     *     dir1/
+     *       file1.txt      ("content1")
+     *       subdir/
+     *         file2.txt    ("content2")
+     *     root.txt         ("root content")
+     *
+     * 操作：
+     *   - jit add dir1 root.txt
+     *   - jit commit -m "nested commit"
+     *
+     * 期望：
+     *   - 从 index 构建出的树包含一层目录 dir1 以及其子目录 subdir；
+     *   - 提交对象存在于对象库中，HEAD 指向该 commit。
      */
     @Test
     @DisplayName("add 嵌套目录后 commit 支持嵌套 tree 结构")
@@ -99,12 +116,29 @@ class CommitCommandTest {
         assertThat(head).isNotNull();
         assertThat(head).hasSize(40);
         assertThat(repo.getDatabase().exists(head)).isTrue();
-        var commitObj = repo.getDatabase().load(head);
+        com.weixiao.obj.GitObject commitObj = repo.getDatabase().load(head);
         assertThat(commitObj.getType()).isEqualTo("commit");
     }
 
     /**
      * 在多层嵌套目录中 add 后再 commit，验证从 index 构建的 tree 正确。
+     *
+     * 文本示意图（工作区路径结构）：
+     *
+     *   工作区：
+     *     a/
+     *       b/
+     *         c/
+     *           d/
+     *             file.txt  ("deep content")
+     *
+     * 操作：
+     *   - jit add a
+     *   - jit commit -m "deep nested"
+     *
+     * 期望：
+     *   - 从 index 构建出的树包含 a/b/c/d 四级目录；
+     *   - 提交写入对象库，HEAD 指向新 commit。
      */
     @Test
     @DisplayName("add 深层嵌套目录后 commit 成功")

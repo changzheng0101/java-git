@@ -419,6 +419,27 @@ class StatusCommandTest {
     void status_allStatusTypes_shown(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
 
+        // 场景文本示意（执行 status 之前）：
+        //
+        //   HEAD:
+        //     committed.txt = "original"
+        //
+        //   index:
+        //     committed.txt = "original"
+        //     deleted.txt   = "content"
+        //     added.txt     = "new"
+        //
+        //   工作区（workspace）：
+        //     committed.txt = "modified"   （已提交文件被修改）
+        //     added.txt     = "new"        （只在 index/工作区，未提交）
+        //     deleted.txt   不存在         （index 中有，工作区被删）
+        //     untracked.txt = "untracked"  （从未 add）
+        //
+        // 期望：
+        // - "Changes to be committed:" 中有 "new file:   added.txt"
+        // - "Changes not staged for commit:" 中有 "modified:   committed.txt" 与 "deleted:    deleted.txt"
+        // - "Untracked files:" 中有 "untracked.txt"
+        //
         // 先创建一个文件并提交
         Path committedFile = tempDir.resolve("committed.txt");
         Files.write(committedFile, "original".getBytes(StandardCharsets.UTF_8));
@@ -459,6 +480,14 @@ class StatusCommandTest {
     void status_porcelain_allStatusTypes(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
 
+        // 场景与 status_allStatusTypes_shown 相同，只是改用 --porcelain 输出机器可读格式：
+        //
+        //   期望输出片段包含：
+        //     A  added.txt
+        //      M committed.txt
+        //     AD deleted.txt
+        //     ?? untracked.txt
+        //
         // 先创建一个文件并提交
         Path committedFile = tempDir.resolve("committed.txt");
         Files.write(committedFile, "original".getBytes(StandardCharsets.UTF_8));
