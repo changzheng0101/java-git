@@ -6,15 +6,12 @@ import com.weixiao.obj.Commit;
 import com.weixiao.revision.Revision;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -88,7 +85,23 @@ public final class RevList {
     /**
      * 解析结果：起点列表 + 排除点列表。
      */
-    public record RevSpecResult(List<String> startRevisions, List<String> excludeRevisions) {
+    public static final class RevSpecResult {
+
+        private final List<String> startRevisions;
+        private final List<String> excludeRevisions;
+
+        public RevSpecResult(List<String> startRevisions, List<String> excludeRevisions) {
+            this.startRevisions = startRevisions;
+            this.excludeRevisions = excludeRevisions;
+        }
+
+        public List<String> startRevisions() {
+            return startRevisions;
+        }
+
+        public List<String> excludeRevisions() {
+            return excludeRevisions;
+        }
     }
 
     /**
@@ -197,6 +210,22 @@ public final class RevList {
     /**
      * rev-list 遍历得到的一条记录：commit oid + 解析后的 Commit。
      */
-    public record CommitEntry(String oid, Commit commit) {
+    public static final class CommitEntry {
+
+        private final String oid;
+        private final Commit commit;
+
+        public CommitEntry(String oid, Commit commit) {
+            this.oid = oid;
+            this.commit = commit;
+        }
+
+        public String oid() {
+            return oid;
+        }
+
+        public Commit commit() {
+            return commit;
+        }
     }
 }

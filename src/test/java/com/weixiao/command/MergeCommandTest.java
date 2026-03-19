@@ -3,6 +3,7 @@ package com.weixiao.command;
 import com.weixiao.Jit;
 import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.merge.CommonAncestors;
 import com.weixiao.obj.Commit;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Refs;
@@ -83,7 +84,7 @@ class MergeCommandTest {
     }
 
     /**
-     * 场景：线性历史下从 dev merge master，命令成功并输出 "Merge made"，产生新的 merge commit。
+     * 场景：线性历史下从 dev merge master（master 已是 dev 的祖先），无需合并与写新提交，应提示 Already up to date。
      *
      * 文本示意图（merge 前）：
      *
@@ -96,21 +97,19 @@ class MergeCommandTest {
      *
      * - A=first, B=second（master 上的两个提交）；
      * - C=third，是在从 B fork 出来的 dev 上再提交一次；
-     * - 在 dev 上执行 merge master，相当于把 master 分支 fast-forward 合并进 dev，
-     *   当前实现会写出一个新的 merge commit（父为 [devTip, masterTip]）。
+     * - 在 dev 上执行 merge master：被合并的提交已是 HEAD 的祖先，应直接返回 "Already up to date."。
      */
     @Test
-    @DisplayName("线性历史下 merge 另一分支成功并输出 Merge made")
-    void merge_linearHistory_printsMergeMade(@TempDir Path tempDir) throws Exception {
+    @DisplayName("被合并提交已是 HEAD 祖先时提示 Already up to date")
+    void merge_linearHistory_printsAlreadyUpToDate(@TempDir Path tempDir) throws Exception {
         initRepoWithBranchAndExtraCommit(tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(result.getOutput()).contains("Merge made.");
+        assertThat(result.getOutput()).contains("Already up to date.");
     }
 
     /**
-     * 场景：在 dev 上执行 merge master（线性历史：dev 比 master 多一个提交），产生一个双 parent 的 merge commit，
-     * 第一个 parent 为当前 HEAD（dev 的 tip），第二个为被合并分支（master）的 tip，且 HEAD 更新为该新 commit。
+     * 场景：线性历史：dev 比 master 多一个提交，在 dev 上 merge master 不应写新 commit，HEAD 不变。
      *
      * 文本示意图（merge 前）：
      *
@@ -121,80 +120,71 @@ class MergeCommandTest {
      *                 |
      *   dev:          B --- C
      *
-     * merge 之后：
-     *
-     *   master:  A --- B
-     *                 ^
-     *                 |
-     *               (fork)
-     *                 |
-     *   dev:          B --- C --- M
-     *                        ^   ^
-     *                        |   |
-     *                     parents=[C (dev tip), B (master tip)]
-     *
      * 该用例断言：
-     * - HEAD 从 C 移到新提交 M；
-     * - M 有两个 parent，且顺序为 [devTip, masterTip]。
+     * - 输出包含 "Already up to date."；
+     * - HEAD 仍为 devTip。
      */
     @Test
-    @DisplayName("merge 产生双 parent commit 且 HEAD 指向新 commit")
-    void merge_linearHistory_createsTwoParentCommitAndUpdatesHead(@TempDir Path tempDir) throws Exception {
+    @DisplayName("线性历史下 merge 祖先提交不写新 commit 且 HEAD 不变")
+    void merge_linearHistory_doesNotCreateCommitAndHeadUnchanged(@TempDir Path tempDir) throws Exception {
         initRepoWithBranchAndExtraCommit(tempDir);
         Repository.find(tempDir);
         String devTip = Repository.INSTANCE.getRefs().readHead();
         String masterTip = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "master"));
         assertThat(devTip).isNotEqualTo(masterTip);
 
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Already up to date.");
 
         String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
-        assertThat(headAfterMerge).isNotEqualTo(devTip).isNotEqualTo(masterTip);
-
-        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(headAfterMerge);
-        assertThat(mergeCommit).isNotNull();
-        assertThat(mergeCommit.getParentOids()).hasSize(2);
-        assertThat(mergeCommit.getParentOids()).containsExactly(devTip, masterTip);
-        assertThat(mergeCommit.getMessage()).contains("Merge branch");
+        assertThat(headAfterMerge).isEqualTo(devTip);
     }
 
     /**
-     * 场景：当前已在 master 上，执行 merge master（HEAD 与参数指向同一 commit），仍会创建一个 merge commit（双 parent 均为同一 oid），HEAD 指向新 commit。
-     *
-     * 文本示意图：
-     *
-     *   master:  A --- B   (HEAD -> B)
-     *
-     * 在 B 上执行：
-     *
-     *   jit merge master
-     *
-     * 合并后得到：
-     *
-     *   master:  A --- B --- M
-     *                    ^   ^
-     *                    |   |
-     *              parents=[B, B]
-     *
-     * 即使合并目标与当前分支 tip 相同，也会生成一个新的 merge commit，
-     * 且该 commit 有两个相同的 parent，HEAD 移动到 M。
+     * 场景：merge 目标与当前 HEAD 相同，不需要执行合并与写新提交，应提示 Already up to date。
      */
     @Test
-    @DisplayName("merge 当前分支时仍创建 merge commit 并更新 HEAD")
-    void merge_sameBranch_createsMergeCommit(@TempDir Path tempDir) throws Exception {
+    @DisplayName("merge 当前提交时提示 Already up to date 且 HEAD 不变")
+    void merge_sameBranch_alreadyUpToDate(@TempDir Path tempDir) throws Exception {
         initRepoWithTwoCommits(tempDir);
         Repository.find(tempDir);
         String headOid = Repository.INSTANCE.getRefs().readHead();
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(result.getOutput()).contains("Merge made.");
+        assertThat(result.getOutput()).contains("Already up to date.");
 
         String newHead = Repository.INSTANCE.getRefs().readHead();
-        assertThat(newHead).isNotEqualTo(headOid);
-        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(newHead);
-        assertThat(mergeCommit.getParentOids()).hasSize(2);
-        assertThat(mergeCommit.getParentOids()).containsExactly(headOid, headOid);
+        assertThat(newHead).isEqualTo(headOid);
+    }
+
+    /**
+     * 场景：master 落后于 dev（dev 是 master 的后代），在 master 上 merge dev 应 fast-forward 到 dev tip，不写新 commit。
+     */
+    @Test
+    @DisplayName("merge 后代提交时 fast-forward 更新 HEAD 且不写新 commit")
+    void merge_descendant_fastForwards(@TempDir Path tempDir) throws Exception {
+        initRepoWithBranchAndExtraCommit(tempDir);
+        Repository.find(tempDir);
+
+        // 当前在 dev，记录 dev tip，并切回 master
+        String devTip = Repository.INSTANCE.getRefs().readHead();
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        String masterTip = Repository.INSTANCE.getRefs().readHead();
+        assertThat(masterTip).isNotEqualTo(devTip);
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "dev");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Fast-forward");
+
+        String headAfter = Repository.INSTANCE.getRefs().readHead();
+        assertThat(headAfter).isEqualTo(devTip);
+
+        // fast-forward 后工作区内容应与 dev tip 一致：f.txt=v3
+        Path f = tempDir.resolve("f.txt");
+        String fContent = new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
+        assertThat(fContent).isEqualTo("v3");
     }
 
     /**
@@ -305,13 +295,13 @@ class MergeCommandTest {
         String dOid = db.store(d);
 
         // B 与 C 的 BCA 是 A
-        assertThat(MergeCommand.findBca(bOid, cOid)).isEqualTo(aOid);
+        assertThat(CommonAncestors.findBestCommonAncestor(bOid, cOid)).isEqualTo(aOid);
 
         // B 与 D 的 BCA 是 B
-        assertThat(MergeCommand.findBca(bOid, dOid)).isEqualTo(bOid);
+        assertThat(CommonAncestors.findBestCommonAncestor(bOid, dOid)).isEqualTo(bOid);
 
         // C 与 D 的 BCA 是 C
-        assertThat(MergeCommand.findBca(cOid, dOid)).isEqualTo(cOid);
+        assertThat(CommonAncestors.findBestCommonAncestor(cOid, dOid)).isEqualTo(cOid);
     }
 
     /**
@@ -364,7 +354,7 @@ class MergeCommandTest {
         String fOid = db.store(f);
 
         // B 与 F 的共同祖先有 A 和 B，其中 best 应该是 B
-        String bca = MergeCommand.findBca(bOid, fOid);
+        String bca = CommonAncestors.findBestCommonAncestor(bOid, fOid);
         assertThat(bca).isEqualTo(bOid);
     }
 

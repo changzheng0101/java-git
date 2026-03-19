@@ -5,8 +5,6 @@ import com.weixiao.diff.TreeDiff;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.PathUtils;
 import lombok.Getter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,8 +22,6 @@ import java.util.Set;
  */
 @Getter
 public final class Migration {
-
-    private static final Logger log = LoggerFactory.getLogger(Migration.class);
 
     private final String currentCommitId;
     private final String targetCommitOid;
@@ -128,7 +124,12 @@ public final class Migration {
         java.nio.file.Path root = repo.getRoot();
 
         index.load();
+        applyIndexChanges(index, root);
 
+        index.save();
+    }
+
+    private void applyIndexChanges(Index index, Path root) throws IOException {
         for (DiffEntry e : deletes) {
             if (e.getEntryA() != null && !e.getEntryA().isDirectory()) {
                 index.remove(PathUtils.normalizePath(e.getPath().toString()));
@@ -149,7 +150,5 @@ public final class Migration {
                 index.add(PathUtils.normalizePath(e.getPath()), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
             }
         }
-
-        index.save();
     }
 }

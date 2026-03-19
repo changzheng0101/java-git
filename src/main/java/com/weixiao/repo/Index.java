@@ -194,6 +194,8 @@ public final class Index {
             out.write(HexUtils.hexToBytes(e.getOid()));
             byte[] nameBytes = e.getPath().getBytes(StandardCharsets.UTF_8);
             int nameLen = Math.min(nameBytes.length, 0xFFF);
+            // todo 这里的flags会包含stage的信息
+            // 帮我添加注释，描述flag每位都干了什么
             int flags = nameLen;
             writeShort(out, (short) flags);
             out.write(nameBytes);
