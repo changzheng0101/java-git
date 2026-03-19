@@ -74,6 +74,10 @@ public final class Index {
         String mode;
         String oid;
         /**
+         * 冲突阶段（0..3）：0=normal，1=base，2=ours，3=theirs。
+         */
+        int stage;
+        /**
          * 文件大小（字节），与 Git index 中 file size 一致。
          */
         int size;
@@ -144,6 +148,7 @@ public final class Index {
             buf.get(oidBytes);
             String oid = HexUtils.bytesToHex(oidBytes);
             int flags = buf.getShort() & 0xFFFF;
+            int stage = (flags >> 12) & 0x3;
             int nameLen = flags & 0x0FFF;
             byte[] nameBytes;
             if (nameLen == 0x0FFF) {
@@ -161,7 +166,7 @@ public final class Index {
             }
             String path = new String(nameBytes, StandardCharsets.UTF_8);
             IndexStat stat = new IndexStat(ctimeSec, ctimeNsec, mtimeSec, mtimeNsec, dev, ino, uid, gid);
-            entries.add(new Entry(path, String.format("%o", mode), oid, size, stat));
+            entries.add(new Entry(path, String.format("%o", mode), oid, stage, size, stat));
             int pad = (8 - ((ENTRY_FIXED_SIZE + nameBytes.length + 1) % 8)) % 8;
             for (int p = 0; p < pad && buf.hasRemaining(); p++) buf.get();
         }
@@ -172,7 +177,7 @@ public final class Index {
      * 将当前暂存区写入 .git/index：Header、按 path 排序的 entry、无扩展、SHA-1 校验和。
      */
     public void save() throws IOException {
-        entries.sort(Comparator.comparing(Entry::getPath));
+        entries.sort(Comparator.comparing(Entry::getPath).thenComparingInt(Entry::getStage));
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(SIGNATURE);
         writeInt(out, VERSION);
@@ -194,9 +199,12 @@ public final class Index {
             out.write(HexUtils.hexToBytes(e.getOid()));
             byte[] nameBytes = e.getPath().getBytes(StandardCharsets.UTF_8);
             int nameLen = Math.min(nameBytes.length, 0xFFF);
-            // todo 这里的flags会包含stage的信息
-            // 帮我添加注释，描述flag每位都干了什么
-            int flags = nameLen;
+            // flags（16 bits）：
+            // - bit 15: assume-valid
+            // - bit 14: extended（v2 固定为 0）
+            // - bit 13-12: stage（0..3）
+            // - bit 11-0: name length（最大 0xFFF，超长使用 0xFFF + NUL 结尾路径）
+            int flags = ((e.getStage() & 0x3) << 12) | nameLen;
             writeShort(out, (short) flags);
             out.write(nameBytes);
             out.write(0);       // NUL
@@ -240,15 +248,25 @@ public final class Index {
      * - 若新路径为 a（文件），则移除已有条目 a/xxx（原为目录下的文件，现 a 为文件）。
      */
     public void add(String path, String mode, String oid, int size, IndexStat stat) {
+        add(path, mode, oid, 0, size, stat);
+    }
+
+    /**
+     * 添加或覆盖一条记录（同一 path+stage 只保留一条）。
+     */
+    public void add(String path, String mode, String oid, int stage, int size, IndexStat stat) {
+        if (stage < 0 || stage > 3) {
+            throw new IllegalArgumentException("stage must be between 0 and 3");
+        }
         String normalized = path.replace('\\', '/');
-        // 同路径覆盖
-        entries.removeIf(e -> e.getPath().equals(normalized));
+        // 同路径同 stage 覆盖
+        entries.removeIf(e -> e.getPath().equals(normalized) && e.getStage() == stage);
         // 新路径是「目录/文件」时：移除原以该路径为名的文件（现为目录）
         entries.removeIf(e -> normalized.startsWith(e.getPath() + "/"));
         // 新路径是单层文件时：移除原在该路径「目录」下的所有条目（现该路径为文件）
         entries.removeIf(e -> e.getPath().startsWith(normalized + "/"));
-        entries.add(new Entry(normalized, mode, oid, size, stat));
-        log.debug("add entry path={} mode={} oid={} size={} stat={}", normalized, mode, oid, size, stat);
+        entries.add(new Entry(normalized, mode, oid, stage, size, stat));
+        log.debug("add entry path={} mode={} oid={} stage={} size={} stat={}", normalized, mode, oid, stage, size, stat);
     }
 
     /**
@@ -279,11 +297,30 @@ public final class Index {
      * 按路径查找一条暂存条目，不存在返回 null。
      */
     public Entry getEntryForPath(String path) {
+        return getEntryForPath(path, 0);
+    }
+
+    /**
+     * 按路径和 stage 查找一条暂存条目，不存在返回 null。
+     */
+    public Entry getEntryForPath(String path, int stage) {
         String normalized = path.replace('\\', '/');
         for (Entry e : entries) {
-            if (e.getPath().equals(normalized)) return e;
+            if (e.getPath().equals(normalized) && e.getStage() == stage) return e;
         }
         return null;
+    }
+
+    /**
+     * 文件是否被 index 跟踪（任意 stage 0..3 只要存在一条即返回 true）。
+     */
+    public boolean trackedFile(String path) {
+        for (int stage = 0; stage <= 3; stage++) {
+            if (getEntryForPath(path, stage) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
