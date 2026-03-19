@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.weixiao.obj.TreeEntry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,12 +20,18 @@ class IndexTest {
     private static final Index.IndexStat ZERO_STAT =
             new Index.IndexStat(0, 0, 0, 0, 0, 0, 0, 0);
 
+    private static String oid(char c) {
+        char[] chars = new char[40];
+        java.util.Arrays.fill(chars, c);
+        return new String(chars);
+    }
+
     @Test
     @DisplayName("add 目录下的文件时移除同名文件条目")
     void add_fileUnderDir_removesSameNameFile(@TempDir Path gitDir) {
         Index index = new Index(gitDir);
-        index.add("alice.txt", "100644", "a".repeat(40), 5, ZERO_STAT);
-        index.add("alice.txt/nested.txt", "100644", "b".repeat(40), 6, ZERO_STAT);
+        index.add("alice.txt", "100644", oid('a'), 5, ZERO_STAT);
+        index.add("alice.txt/nested.txt", "100644", oid('b'), 6, ZERO_STAT);
 
         List<String> paths = index.getEntries().stream()
                 .map(Index.Entry::getPath)
@@ -38,9 +45,9 @@ class IndexTest {
     @DisplayName("add 普通文件时移除同名目录下的所有条目")
     void add_file_removesSameNameDirEntries(@TempDir Path gitDir) {
         Index index = new Index(gitDir);
-        index.add("nested/bob.txt", "100644", "a".repeat(40), 3, ZERO_STAT);
-        index.add("nested/inner/claire.txt", "100644", "b".repeat(40), 6, ZERO_STAT);
-        index.add("nested", "100644", "c".repeat(40), 4, ZERO_STAT);
+        index.add("nested/bob.txt", "100644", oid('a'), 3, ZERO_STAT);
+        index.add("nested/inner/claire.txt", "100644", oid('b'), 6, ZERO_STAT);
+        index.add("nested", "100644", oid('c'), 4, ZERO_STAT);
 
         List<String> paths = index.getEntries().stream()
                 .map(Index.Entry::getPath)
@@ -55,8 +62,8 @@ class IndexTest {
     @DisplayName("add hello.txt 再 add hello.txt/a.txt 时只保留 hello.txt/a.txt")
     void add_helloThenHelloSlashA_removesHello(@TempDir Path gitDir) {
         Index index = new Index(gitDir);
-        index.add("hello.txt", "100644", "a".repeat(40), 5, ZERO_STAT);
-        index.add("hello.txt/a.txt", "100644", "b".repeat(40), 1, ZERO_STAT);
+        index.add("hello.txt", "100644", oid('a'), 5, ZERO_STAT);
+        index.add("hello.txt/a.txt", "100644", oid('b'), 1, ZERO_STAT);
 
         List<String> paths = index.getEntries().stream()
                 .map(Index.Entry::getPath)
@@ -64,5 +71,35 @@ class IndexTest {
                 .collect(Collectors.toList());
         assertThat(paths).containsExactly("hello.txt/a.txt");
         assertThat(paths).doesNotContain("hello.txt");
+    }
+
+    @Test
+    @DisplayName("addConflictSet 先清理 stage-0 并按 1/2/3 写入非空冲突条目")
+    void addConflictSet_replacesStage0AndWritesConflictStages(@TempDir Path gitDir) {
+        Index index = new Index(gitDir);
+        index.add("a.txt", "100644", oid('z'), 10, ZERO_STAT);
+
+        TreeEntry base = new TreeEntry("100644", "a.txt", oid('a'));
+        TreeEntry ours = new TreeEntry("100644", "a.txt", oid('b'));
+
+        index.addConflictSet("a.txt", base, ours, null);
+
+        assertThat(index.getEntryForPath("a.txt", 0)).isNull();
+        assertThat(index.getEntryForPath("a.txt", 1)).isNotNull();
+        assertThat(index.getEntryForPath("a.txt", 2)).isNotNull();
+        assertThat(index.getEntryForPath("a.txt", 3)).isNull();
+    }
+
+    @Test
+    @DisplayName("isConflicted 只要存在非 0 stage 条目就返回 true")
+    void isConflicted_trueWhenAnyNonZeroStage(@TempDir Path gitDir) {
+        Index index = new Index(gitDir);
+        assertThat(index.isConflicted()).isFalse();
+
+        index.add("a.txt", "100644", oid('a'), 0, 1, ZERO_STAT);
+        assertThat(index.isConflicted()).isFalse();
+
+        index.add("a.txt", "100644", oid('b'), 2, 1, ZERO_STAT);
+        assertThat(index.isConflicted()).isTrue();
     }
 }

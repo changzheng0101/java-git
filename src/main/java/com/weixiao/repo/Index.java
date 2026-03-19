@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.HexUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -18,6 +19,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 import lombok.Value;
 
@@ -52,6 +54,8 @@ public final class Index {
      */
     @Value
     public static class IndexStat {
+        public static final IndexStat EMPTY = new IndexStat(0, 0, 0, 0, 0, 0, 0, 0);
+
         int ctimeSec;
         int ctimeNsec;
         int mtimeSec;
@@ -82,7 +86,7 @@ public final class Index {
          */
         int size;
         /**
-         * stat 属性（ctime/mtime/dev/ino/uid/gid），可为 null（加载旧格式时用 0 填充）。
+         * stat 属性（ctime/mtime/dev/ino/uid/gid），不能为空。
          */
         IndexStat stat;
     }
@@ -184,7 +188,7 @@ public final class Index {
         writeInt(out, entries.size());
 
         for (Entry e : entries) {
-            IndexStat s = e.getStat() != null ? e.getStat() : new IndexStat(0, 0, 0, 0, 0, 0, 0, 0);
+            IndexStat s = e.getStat();
             writeInt(out, s.getCtimeSec());
             writeInt(out, s.getCtimeNsec());
             writeInt(out, s.getMtimeSec());
@@ -258,6 +262,7 @@ public final class Index {
         if (stage < 0 || stage > 3) {
             throw new IllegalArgumentException("stage must be between 0 and 3");
         }
+        Objects.requireNonNull(stat, "stat must not be null");
         String normalized = path.replace('\\', '/');
         // 同路径同 stage 覆盖
         entries.removeIf(e -> e.getPath().equals(normalized) && e.getStage() == stage);
@@ -267,6 +272,28 @@ public final class Index {
         entries.removeIf(e -> e.getPath().startsWith(normalized + "/"));
         entries.add(new Entry(normalized, mode, oid, stage, size, stat));
         log.debug("add entry path={} mode={} oid={} stage={} size={} stat={}", normalized, mode, oid, stage, size, stat);
+    }
+
+    /**
+     * 写入三方冲突集合（base/ours/theirs）到同一路径：
+     * - 先移除该路径已有的 stage-0 及旧冲突条目；
+     * - 再把非空条目分别写为 stage 1/2/3；
+     * - 若某一侧不存在（entry 为 null），则跳过该 stage。
+     */
+    public void addConflictSet(String path, TreeEntry base, TreeEntry ours, TreeEntry theirs) {
+        String normalized = path.replace('\\', '/');
+        entries.removeIf(e -> e.getPath().equals(normalized));
+        addConflictEntry(normalized, base, 1);
+        addConflictEntry(normalized, ours, 2);
+        addConflictEntry(normalized, theirs, 3);
+        log.debug("add conflict set path={} base={} ours={} theirs={}", normalized, base, ours, theirs);
+    }
+
+    private void addConflictEntry(String path, TreeEntry entry, int stage) {
+        if (entry == null) {
+            return;
+        }
+        entries.add(new Entry(path, entry.getMode(), entry.getOid(), stage, 0, IndexStat.EMPTY));
     }
 
     /**
@@ -317,6 +344,18 @@ public final class Index {
     public boolean trackedFile(String path) {
         for (int stage = 0; stage <= 3; stage++) {
             if (getEntryForPath(path, stage) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 暂存区是否处于冲突态：任一条目的 stage 非 0 即为冲突态。
+     */
+    public boolean isConflicted() {
+        for (Entry entry : entries) {
+            if (entry.getStage() != 0) {
                 return true;
             }
         }
