@@ -56,6 +56,11 @@ public class MergeCommand extends BaseCommand {
                 return;
             }
 
+            if (repo.getIndex().isConflicted()) {
+                System.err.println("error: merge has conflicts in index.");
+                exitCode = 1;
+                return;
+            }
             new MergeResolve(inputs).execute();
 
             String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());

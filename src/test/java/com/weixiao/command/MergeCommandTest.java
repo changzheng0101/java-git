@@ -5,6 +5,7 @@ import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
 import com.weixiao.merge.CommonAncestors;
 import com.weixiao.obj.Commit;
+import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
@@ -365,5 +366,50 @@ class MergeCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "nonexistent-branch");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("fatal:");
+    }
+
+    @Test
+    @DisplayName("merge 后若 index 仍处于冲突态则失败且不写新 commit")
+    void merge_conflictedIndexAfterResolve_failsWithoutCommit(@TempDir Path tempDir) throws Exception {
+        // 构造 A-B(master) 与 A-C(topic) 的非冲突分叉场景
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+        Path g = tempDir.resolve("g.txt");
+        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        Files.write(g, "1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.write(g, "3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Repository.find(tempDir);
+        String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+
+        // 预先向 index 写入一个与本次 merge 无关的冲突条目，模拟 resolve 后仍有冲突未解
+        Repository.INSTANCE.getIndex().load();
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "conflict.txt",
+                new TreeEntry("100644", "conflict.txt", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                new TreeEntry("100644", "conflict.txt", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                null
+        );
+        Repository.INSTANCE.getIndex().save();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("merge has conflicts in index");
+
+        String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
+        assertThat(headAfterMerge).isEqualTo(headBeforeMerge);
     }
 }
