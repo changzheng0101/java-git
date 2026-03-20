@@ -61,7 +61,13 @@ public class MergeCommand extends BaseCommand {
                 exitCode = 1;
                 return;
             }
-            new MergeResolve(inputs).execute();
+            MergeResolve mergeResolve = new MergeResolve(inputs, rev);
+            mergeResolve.execute();
+            if (mergeResolve.hasConflicts()) {
+                System.err.println("error: merge conflicts detected.");
+                exitCode = 1;
+                return;
+            }
 
             String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());
             String author = formatAuthor();

@@ -368,6 +368,71 @@ class MergeCommandTest {
         assertThat(result.getErr()).contains("fatal:");
     }
 
+    /**
+     * 场景：同一文件内容冲突（A=1，master 改为 2，topic 改为 3）。
+     *
+     * 文本示意图：
+     *
+     *        A(f.txt=1)
+     *       /          \
+     *   B(master=2)   C(topic=3)
+     *
+     * 在 master 上执行 merge topic 后应进入冲突态：
+     * - 不写新的 merge commit（HEAD 保持在 B）；
+     * - 工作区 f.txt 写入冲突标记，且包含 2 和 3；
+     * - index 中 f.txt 存在 stage 1/2/3 条目。
+     */
+    @Test
+    @DisplayName("同一文件内容冲突时 merge 失败且写入冲突标记与冲突 stage")
+    void merge_simpleContentConflict_marksConflictAndKeepsHead(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+
+        // A: f.txt=1
+        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+
+        // 从 A 创建 topic
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        // B(master): f.txt=2
+        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        // C(topic): f.txt=3
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.write(f, "3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        // 回到 master 执行 merge topic
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Repository.find(tempDir);
+        String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("merge conflicts detected");
+
+        String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
+        assertThat(headAfterMerge).isEqualTo(headBeforeMerge);
+
+        String mergedContent = new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
+        assertThat(mergedContent).contains("<<<<<<< HEAD");
+        assertThat(mergedContent).contains("=======");
+        assertThat(mergedContent).contains(">>>>>>> topic");
+        assertThat(mergedContent).contains("2");
+        assertThat(mergedContent).contains("3");
+
+        Repository.INSTANCE.getIndex().load();
+        assertThat(Repository.INSTANCE.getIndex().isConflicted()).isTrue();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt", 1)).isNotNull();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt", 2)).isNotNull();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt", 3)).isNotNull();
+    }
+
     @Test
     @DisplayName("merge 后若 index 仍处于冲突态则失败且不写新 commit")
     void merge_conflictedIndexAfterResolve_failsWithoutCommit(@TempDir Path tempDir) throws Exception {

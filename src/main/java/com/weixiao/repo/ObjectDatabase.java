@@ -127,6 +127,17 @@ public final class ObjectDatabase {
     }
 
     /**
+     * 按 oid 加载 blob 对象，不存在或类型不匹配时抛出 IOException。
+     */
+    public Blob loadBlob(String blobOid) throws IOException {
+        GitObject obj = this.load(blobOid);
+        if (!"blob".equals(obj.getType())) {
+            throw new IOException("expected blob: " + blobOid);
+        }
+        return (Blob) obj;
+    }
+
+    /**
      * 按 oid 加载 commit 对象，使用成员缓存避免重复加载；不存在或类型非 commit 时返回 null。
      */
     public Commit loadCommit(String commitId) {

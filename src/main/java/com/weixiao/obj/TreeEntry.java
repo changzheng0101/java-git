@@ -25,6 +25,20 @@ public final class TreeEntry {
         return mode.startsWith("4");
     }
 
+    /**
+     * 判断两个条目的 mode 和 oid 是否一致（忽略 name）。
+     */
+    public static boolean sameModeAndOid(TreeEntry a, TreeEntry b) {
+        if (a == null && b == null) {
+            return true;
+        }
+        if (a == null || b == null) {
+            return false;
+        }
+        return Objects.equals(a.getMode(), b.getMode())
+            && Objects.equals(a.getOid(), b.getOid());
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {

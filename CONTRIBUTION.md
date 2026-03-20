@@ -36,3 +36,42 @@ Merge需要构造virtual base的特殊情况
  [A2]  /   \  [B2]
    \  /     \  /
    [M1]     [M2]  <-- 此时我们要 merge(M1, M2)
+
+
+
+## 构造测试
+### Merge命令
+构造一个简单的冲突场景，原始数据是1，之后两个commit分表将内容改为2 和 3，之后用Merge合并
+```bash
+#!/bin/bash
+
+
+# 1. 创建并进入测试目录
+mkdir jit-conflict-test
+cd jit-conflict-test
+
+# 2. 初始化仓库
+jit init
+
+# 3. 创建原始数据：内容为 1
+echo "1" > data.txt
+jit add data.txt
+jit commit -m "Initial commit: data is 1"
+
+# 4. 创建一个新分支 'branch-A' 并将内容改为 2
+jit branch branch-A
+jit checkout branch-A
+echo "2" > data.txt
+jit add data.txt
+jit commit -m "Update data to 2 in branch-A"
+
+# 5. 回到主分支 (假设为 master 或 main，请根据 jit 默认分支名调整)
+jit checkout master
+
+# 6. 创建另一个新分支 'branch-B' 并将内容改为 3
+jit branch branch-B
+jit checkout branch-B
+echo "3" > data.txt
+jit add data.txt
+jit commit -m "Update data to 3 in branch-B"
+```

@@ -5,6 +5,7 @@ import com.weixiao.diff.TreeDiff;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.PathUtils;
 import lombok.Getter;
+import lombok.SneakyThrows;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,8 +24,8 @@ import java.util.Set;
 @Getter
 public final class Migration {
 
-    private final String currentCommitId;
-    private final String targetCommitOid;
+    private String currentCommitId;
+    private String targetCommitOid;
 
     /**
      * 可能需要删除的目录路径（删除文件中产生的空父目录候选），由 planChanges 填充。
@@ -35,6 +36,8 @@ public final class Migration {
      */
     private final Set<String> mkdirs = new HashSet<>();
 
+
+    private List<DiffEntry> changes;
     private List<DiffEntry> deletes = new ArrayList<>();
     private List<DiffEntry> creates = new ArrayList<>();
     private List<DiffEntry> modifies = new ArrayList<>();
@@ -43,9 +46,15 @@ public final class Migration {
      * @param currentCommitId 当前 commit oid（如 HEAD），可为 null 表示无当前提交
      * @param targetCommitOid 目标 commit oid，用于 diff、填充 index 与更新 HEAD
      */
+    @SneakyThrows
     public Migration(String currentCommitId, String targetCommitOid) {
         this.currentCommitId = currentCommitId;
         this.targetCommitOid = targetCommitOid;
+        this.changes = TreeDiff.diff(currentCommitId, targetCommitOid, java.nio.file.Paths.get(""));
+    }
+
+    public Migration(List<DiffEntry> changes) {
+        this.changes = changes;
     }
 
     /**
@@ -70,7 +79,6 @@ public final class Migration {
      * 创建与修改：将对应文件的父目录加入 mkdirs，确保写文件前目录存在。
      */
     public void planChanges() throws IOException {
-        List<DiffEntry> changes = TreeDiff.diff(currentCommitId, targetCommitOid, java.nio.file.Paths.get(""));
 
         rmdirs.clear();
         mkdirs.clear();
