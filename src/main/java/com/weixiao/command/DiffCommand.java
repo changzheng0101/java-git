@@ -17,11 +17,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * jit diff - 显示 index 与 workspace 或 index 与 HEAD 的差异。
@@ -126,8 +126,12 @@ public class DiffCommand extends BaseCommand {
         paths.addAll(status.getIndexModified());
         paths.addAll(status.getIndexDeleted());
         Collections.sort(paths);
-        Map<String, String> headPathToOid = status.getHeadPathToOid();
-        Map<String, String> headPathToMode = status.getHeadPathToMode();
+        Map<String, String> headPathToOid = new HashMap<>();
+        Map<String, String> headPathToMode = new HashMap<>();
+        String headCommitOid = repo.getRefs().readHead();
+        if (headCommitOid != null) {
+            repo.collectCommitTreeTo(headCommitOid, headPathToOid, headPathToMode);
+        }
         for (String path : paths) {
             String headOid = headPathToOid.get(path);
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);

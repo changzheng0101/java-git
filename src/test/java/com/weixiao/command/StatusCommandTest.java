@@ -3,6 +3,7 @@ package com.weixiao.command;
 import com.weixiao.Jit;
 import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.Repository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -518,5 +519,68 @@ class StatusCommandTest {
         assertThat(result.getOutput()).contains(" M committed.txt");
         assertThat(result.getOutput()).contains("AD deleted.txt");
         assertThat(result.getOutput()).contains("?? untracked.txt");
+    }
+
+    @Test
+    @DisplayName("index 冲突态时 status 显示 Unmerged paths")
+    void status_conflicts_shown(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Repository.find(tempDir);
+
+        // 构造一个冲突集合写入 index（不依赖 merge 命令）
+        Repository.INSTANCE.getIndex().load();
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "conflict.txt",
+                new TreeEntry("100644", "conflict.txt", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                new TreeEntry("100644", "conflict.txt", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                new TreeEntry("100644", "conflict.txt", "cccccccccccccccccccccccccccccccccccccccc")
+        );
+        Repository.INSTANCE.getIndex().save();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Unmerged paths:");
+        assertThat(result.getOutput()).contains("both modified:   conflict.txt");
+        assertThat(result.getOutput()).contains("conflict.txt");
+    }
+
+    @Test
+    @DisplayName("--porcelain 模式：冲突文件 [1,2] 输出为 UD <path>")
+    void status_porcelain_conflicts_UD(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Repository.find(tempDir);
+
+        Repository.INSTANCE.getIndex().load();
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "conflict.txt",
+                new TreeEntry("100644", "conflict.txt", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                new TreeEntry("100644", "conflict.txt", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                null
+        );
+        Repository.INSTANCE.getIndex().save();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("UD conflict.txt");
+    }
+
+    @Test
+    @DisplayName("--porcelain 模式：冲突文件 [1,2,3] 输出为 UU <path>")
+    void status_porcelain_conflicts_UU(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Repository.find(tempDir);
+
+        Repository.INSTANCE.getIndex().load();
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "conflict.txt",
+                new TreeEntry("100644", "conflict.txt", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                new TreeEntry("100644", "conflict.txt", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                new TreeEntry("100644", "conflict.txt", "cccccccccccccccccccccccccccccccccccccccc")
+        );
+        Repository.INSTANCE.getIndex().save();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
+        assertThat(result.getExitCode()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("UU conflict.txt");
     }
 }

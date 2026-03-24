@@ -7,12 +7,15 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * status 业务逻辑的结果：workspace vs index、index vs HEAD 的差异集合，
- * 以及 HEAD tree 的 path→oid，供 status 展示与 diff 复用。
- */
+/** status 业务逻辑结果：workspace vs index、index vs HEAD 的差异集合。 */
 @Data
 public final class StatusResult {
+
+    /**
+     * index 处于冲突态的路径集合：
+     * key=path，value=该路径存在的冲突 stage 子集（如 [1,2,3]/[1,2]/[1,3]/[2,3]/[2]/[3]）。
+     */
+    private final Map<String, Set<Integer>> conflicts = new HashMap<>();
 
     private final Set<String> workspaceModified = new HashSet<>();
     private final Set<String> workspaceDeleted = new HashSet<>();
@@ -20,13 +23,5 @@ public final class StatusResult {
     private final Set<String> indexAdded = new HashSet<>();
     private final Set<String> indexDeleted = new HashSet<>();
     private final Set<String> indexModified = new HashSet<>();
-    /**
-     * HEAD 对应 tree 中 path → blob oid，无 HEAD 时为空。
-     */
-    private final Map<String, String> headPathToOid = new HashMap<>();
-    /**
-     * HEAD 对应 tree 中 path → mode（如 100644），无 HEAD 时为空。
-     */
-    private final Map<String, String> headPathToMode = new HashMap<>();
 
 }

@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,39 +29,82 @@ public final class Status {
      */
     public static StatusResult getStatus() throws IOException {
         Repository repo = Repository.INSTANCE;
-        List<Index.Entry> indexEntries = new ArrayList<>(repo.getIndex().getEntries());
-        Map<String, Index.Entry> pathToEntry = new LinkedHashMap<>();
-        for (Index.Entry e : indexEntries) {
-            pathToEntry.put(e.getPath(), e);
-        }
-        Set<String> trackedPaths = pathToEntry.keySet();
-
-        List<WorkspaceFile> workspaceFiles = collectWorkspaceFiles(repo.getRoot(), "", trackedPaths);
-        workspaceFiles.sort(Comparator.comparing(WorkspaceFile::getRelativePath));
-
         StatusResult result = new StatusResult();
-        prepareHeadPathToOid(result);
+        Map<String, String> headPathToOid = new LinkedHashMap<>();
+        Map<String, String> headPathToMode = new LinkedHashMap<>();
+        prepareHeadTreeMaps(headPathToOid, headPathToMode);
 
-        compareIndexToWorkspace(indexEntries, pathToEntry, workspaceFiles, result);
-        compareIndexToHEAD(indexEntries, result.getHeadPathToOid(), result);
+        List<Index.Entry> allIndexEntries = new ArrayList<>(repo.getIndex().getEntries());
+        Set<String> stage0Paths = checkIndexEntries(allIndexEntries, headPathToOid, headPathToMode, result);
+
+        // 检查 index delete文件， head中有 但是index删除的文件
+        collectIndexDeleted(stage0Paths, headPathToOid.keySet(), result);
+
+        // 检查 untracked file，head中没有，但是Workspace有
+        Set<String> trackedPaths = new java.util.HashSet<>(stage0Paths);
+        trackedPaths.addAll(result.getConflicts().keySet());
+        collectWorkspaceUntracked(repo.getRoot(), "", trackedPaths, result.getWorkspaceUntracked());
 
         return result;
     }
 
     /**
-     * 仅判断单文件：index 与 workspace 的差异。使用当前 {@link Repository#INSTANCE}。
+     * 遍历 index 所有条目：
+     * - stage=0：检查 index 与 workspace、index 与 HEAD 的差异；
+     * - stage!=0：记录冲突路径及其 stage 集合。
      *
-     * @return MODIFIED / ADDED / DELETED / UNCHANGED
+     * @return stage=0 的路径集合
      */
-    public static FileStatus check_index_against_workspace(String path) throws IOException {
+    private static Set<String> checkIndexEntries(List<Index.Entry> allIndexEntries,
+                                                 Map<String, String> headPathToOid,
+                                                 Map<String, String> headPathToMode,
+                                                 StatusResult result) throws IOException {
+        Set<String> stage0Paths = new java.util.HashSet<>();
+        for (Index.Entry entry : allIndexEntries) {
+            if (entry.getStage() == 0) {
+                stage0Paths.add(entry.getPath());
+                checkStage0Entry(entry, headPathToOid, headPathToMode, result);
+            } else {
+                result.getConflicts()
+                        .computeIfAbsent(entry.getPath(), k -> new java.util.TreeSet<>())
+                        .add(entry.getStage());
+            }
+        }
+        return stage0Paths;
+    }
+
+    /**
+     * 检查一条 stage-0 index 记录并更新 status 结果：
+     * - workspace 侧：MODIFIED / DELETED
+     * - HEAD 侧：ADDED / MODIFIED
+     */
+    private static void checkStage0Entry(Index.Entry entry,
+                                         Map<String, String> headPathToOid,
+                                         Map<String, String> headPathToMode,
+                                         StatusResult result) throws IOException {
+        FileStatus workspaceStatus = checkIndexAgainstWorkspace(entry);
+        if (workspaceStatus == FileStatus.MODIFIED) {
+            result.getWorkspaceModified().add(entry.getPath());
+        } else if (workspaceStatus == FileStatus.DELETED) {
+            result.getWorkspaceDeleted().add(entry.getPath());
+        }
+
+        FileStatus headStatus = checkIndexAgainstHeadTree(entry, headPathToOid, headPathToMode);
+        if (headStatus == FileStatus.ADDED) {
+            result.getIndexAdded().add(entry.getPath());
+        } else if (headStatus == FileStatus.MODIFIED) {
+            result.getIndexModified().add(entry.getPath());
+        }
+    }
+
+    /**
+     * 计算单条 index 记录（stage-0）相对 workspace 的状态。
+     */
+    private static FileStatus checkIndexAgainstWorkspace(Index.Entry indexEntry) throws IOException {
         Repository repo = Repository.INSTANCE;
-        Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
+        String path = indexEntry.getPath();
         Path filePath = repo.getRoot().resolve(path.replace('\\', '/'));
         boolean existsInWorkspace = Files.exists(filePath) && Files.isRegularFile(filePath);
-
-        if (indexEntry == null) {
-            return existsInWorkspace ? FileStatus.ADDED : FileStatus.UNCHANGED;
-        }
         if (!existsInWorkspace) {
             return FileStatus.DELETED;
         }
@@ -76,50 +118,59 @@ public final class Status {
     }
 
     /**
-     * 仅判断单文件：index 与 HEAD tree 的差异。使用当前 {@link Repository#INSTANCE}。
-     *
-     * @return MODIFIED / ADDED / DELETED / UNCHANGED
+     * 计算单条 index 记录（stage-0）相对 HEAD tree 的状态。
      */
-    public static FileStatus check_index_against_head_tree(String path) throws IOException {
-        Repository repo = Repository.INSTANCE;
-        Map<String, String> headPathToOid = new LinkedHashMap<>();
-        Map<String, String> headPathToMode = new LinkedHashMap<>();
-        String headOid = repo.getRefs().readHead();
-        if (headOid != null) {
-            repo.collectCommitTreeTo(headOid, headPathToOid, headPathToMode);
-        }
-
-        Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
+    private static FileStatus checkIndexAgainstHeadTree(Index.Entry indexEntry,
+                                                        Map<String, String> headPathToOid,
+                                                        Map<String, String> headPathToMode) {
+        String path = indexEntry.getPath();
         boolean inHead = headPathToOid.containsKey(path);
-
-        if (indexEntry == null) {
-            return inHead ? FileStatus.DELETED : FileStatus.UNCHANGED;
-        }
         if (!inHead) {
             return FileStatus.ADDED;
         }
-        String indexOid = indexEntry.getOid();
         String headOidForPath = headPathToOid.get(path);
         String headMode = headPathToMode.get(path);
         String indexMode = indexEntry.getMode();
-        boolean oidChanged = headOidForPath != null && !indexOid.equals(headOidForPath);
+        boolean oidChanged = headOidForPath != null && !indexEntry.getOid().equals(headOidForPath);
         boolean modeChanged = headMode != null && !headMode.equals(indexMode);
         return (oidChanged || modeChanged) ? FileStatus.MODIFIED : FileStatus.UNCHANGED;
     }
 
-    private static void prepareHeadPathToOid(StatusResult result) throws IOException {
+    /**
+     * 读取 HEAD 所在提交树并展开为 path->oid/mode 映射；无 HEAD 时保持为空。
+     */
+    private static void prepareHeadTreeMaps(Map<String, String> headPathToOid,
+                                            Map<String, String> headPathToMode) throws IOException {
         Repository repo = Repository.INSTANCE;
         String headOid = repo.getRefs().readHead();
         if (headOid == null) {
             return;
         }
-        repo.collectCommitTreeTo(headOid, result.getHeadPathToOid(), result.getHeadPathToMode());
+        repo.collectCommitTreeTo(headOid, headPathToOid, headPathToMode);
     }
 
-    private static List<WorkspaceFile> collectWorkspaceFiles(Path dir, String prefix,
-                                                            Set<String> trackedPaths) throws IOException {
+    /**
+     * 统计 index vs HEAD 中的删除：HEAD 有、stage-0 index 无。
+     */
+    private static void collectIndexDeleted(Set<String> stage0Paths,
+                                            Set<String> headPaths,
+                                            StatusResult result) {
+        for (String headPath : headPaths) {
+            if (!stage0Paths.contains(headPath)) {
+                result.getIndexDeleted().add(headPath);
+            }
+        }
+    }
+
+    /**
+     * 递归收集 workspace 中的未跟踪路径：
+     * - 文件：直接记录 path
+     * - 目录：若目录下无 tracked 文件且包含任意文件，记录 "dir/"；否则继续递归
+     */
+    private static void collectWorkspaceUntracked(Path dir, String prefix,
+                                                  Set<String> trackedPaths,
+                                                  Set<String> workspaceUntracked) throws IOException {
         Repository repo = Repository.INSTANCE;
-        List<WorkspaceFile> result = new ArrayList<>();
         List<Path> entries = repo.getWorkspace().listEntries(dir);
         entries.sort(Comparator.comparing(a -> a.getFileName().toString()));
 
@@ -128,33 +179,33 @@ public final class Status {
             String relativePath = prefix.isEmpty() ? name : prefix + "/" + name;
 
             if (Files.isRegularFile(child)) {
-                if (trackedPaths.contains(relativePath)) {
-                    long fileSize = Files.size(child);
-                    String mode = repo.getWorkspace().getFileMode(child);
-                    Index.IndexStat stat = Workspace.getFileStat(child);
-                    result.add(new WorkspaceFile(relativePath, child, false, fileSize, mode, stat));
-                } else {
-                    result.add(new WorkspaceFile(relativePath, child, false));
+                if (!trackedPaths.contains(relativePath)) {
+                    workspaceUntracked.add(relativePath);
                 }
             } else if (Files.isDirectory(child)) {
                 if (!hasTrackedFilesUnder(relativePath, trackedPaths)) {
                     if (hasAnyFileUnder(repo.getWorkspace(), child)) {
-                        result.add(new WorkspaceFile(relativePath, child, true));
+                        workspaceUntracked.add(relativePath + "/");
                     }
                 } else {
-                    result.addAll(collectWorkspaceFiles(child, relativePath, trackedPaths));
+                    collectWorkspaceUntracked(child, relativePath, trackedPaths, workspaceUntracked);
                 }
             }
         }
-        return result;
     }
 
+    /**
+     * 判断 trackedPaths 中是否存在 dirPath 或其子路径。
+     */
     private static boolean hasTrackedFilesUnder(String dirPath, Set<String> trackedPaths) {
         String prefix = dirPath.isEmpty() ? "" : dirPath + "/";
         return trackedPaths.stream()
                 .anyMatch(p -> p.equals(dirPath) || p.startsWith(prefix));
     }
 
+    /**
+     * 判断目录下是否存在任意文件（递归），用于未跟踪目录聚合显示。
+     */
     private static boolean hasAnyFileUnder(Workspace w, Path dir) throws IOException {
         for (Path child : w.listEntries(dir)) {
             if (Files.isRegularFile(child)) {
@@ -167,111 +218,9 @@ public final class Status {
         return false;
     }
 
-    private static void compareIndexToWorkspace(List<Index.Entry> indexEntries,
-                                                Map<String, Index.Entry> pathToEntry,
-                                                List<WorkspaceFile> workspaceFiles,
-                                                StatusResult result) throws IOException {
-        int indexIdx = 0;
-        int workspaceIdx = 0;
-
-        while (indexIdx < indexEntries.size() || workspaceIdx < workspaceFiles.size()) {
-            String indexPath = indexIdx < indexEntries.size() ? indexEntries.get(indexIdx).getPath() : null;
-            String workspacePath = workspaceIdx < workspaceFiles.size()
-                    ? workspaceFiles.get(workspaceIdx).getRelativePath() : null;
-
-            if (workspacePath == null) {
-                result.getWorkspaceDeleted().add(indexPath);
-                log.debug("workspace deleted: {}", indexPath);
-                indexIdx++;
-            } else if (indexPath == null) {
-                WorkspaceFile wsFile = workspaceFiles.get(workspaceIdx);
-                if (wsFile.isDirectory()) {
-                    result.getWorkspaceUntracked().add(workspacePath + "/");
-                } else {
-                    result.getWorkspaceUntracked().add(workspacePath);
-                }
-                workspaceIdx++;
-            } else {
-                int cmp = workspacePath.compareTo(indexPath);
-                if (cmp < 0) {
-                    WorkspaceFile wsFile = workspaceFiles.get(workspaceIdx);
-                    if (wsFile.isDirectory()) {
-                        result.getWorkspaceUntracked().add(workspacePath + "/");
-                    } else {
-                        result.getWorkspaceUntracked().add(workspacePath);
-                    }
-                    workspaceIdx++;
-                } else if (cmp > 0) {
-                    result.getWorkspaceDeleted().add(indexPath);
-                    log.debug("workspace deleted: {}", indexPath);
-                    indexIdx++;
-                } else {
-                    WorkspaceFile wsFile = workspaceFiles.get(workspaceIdx);
-                    if (!wsFile.isDirectory()) {
-                        FileStatus status = check_index_against_workspace(indexPath);
-                        if (status == FileStatus.MODIFIED) {
-                            result.getWorkspaceModified().add(indexPath);
-                        }
-                    }
-                    indexIdx++;
-                    workspaceIdx++;
-                }
-            }
-        }
-    }
-
-    private static void compareIndexToHEAD(List<Index.Entry> indexEntries,
-                                           Map<String, String> headPathToOid,
-                                           StatusResult result) throws IOException {
-        List<String> headPaths = new ArrayList<>(headPathToOid.keySet());
-        Collections.sort(headPaths);
-
-        if (headPaths.isEmpty()) {
-            for (Index.Entry entry : indexEntries) {
-                result.getIndexAdded().add(entry.getPath());
-            }
-            return;
-        }
-
-        int indexIdx = 0;
-        int headIdx = 0;
-
-        while (indexIdx < indexEntries.size() || headIdx < headPaths.size()) {
-            String indexPath = indexIdx < indexEntries.size() ? indexEntries.get(indexIdx).getPath() : null;
-            String headPath = headIdx < headPaths.size() ? headPaths.get(headIdx) : null;
-
-            if (indexPath == null) {
-                result.getIndexDeleted().add(headPath);
-                headIdx++;
-            } else if (headPath == null) {
-                result.getIndexAdded().add(indexPath);
-                indexIdx++;
-            } else {
-                int cmp = indexPath.compareTo(headPath);
-                if (cmp < 0) {
-                    result.getIndexAdded().add(indexPath);
-                    indexIdx++;
-                } else if (cmp > 0) {
-                    result.getIndexDeleted().add(headPath);
-                    headIdx++;
-                } else {
-                    Index.Entry indexEntry = indexEntries.get(indexIdx);
-                    String indexOid = indexEntry.getOid();
-                    String headOid = headPathToOid.get(headPath);
-                    String headMode = result.getHeadPathToMode().get(headPath);
-                    String indexMode = indexEntry.getMode();
-                    boolean oidChanged = headOid != null && !indexOid.equals(headOid);
-                    boolean modeChanged = headMode != null && !headMode.equals(indexMode);
-                    if (oidChanged || modeChanged) {
-                        result.getIndexModified().add(indexPath);
-                    }
-                    indexIdx++;
-                    headIdx++;
-                }
-            }
-        }
-    }
-
+    /**
+     * 基于 size/mode/stat/content 判断 workspace 文件是否相对 index 条目发生变化。
+     */
     private static boolean isFileModified(Workspace w, Path filePath, Index.Entry entry,
                                           Index.IndexStat workspaceStat, String workspaceMode,
                                           long fileSize, String relativePath) throws IOException {
@@ -302,50 +251,4 @@ public final class Status {
         return false;
     }
 
-    private static final class WorkspaceFile {
-        private final String relativePath;
-        private final Path absolutePath;
-        private final boolean directory;
-        private final Long fileSize;
-        private final String mode;
-        private final Index.IndexStat stat;
-
-        WorkspaceFile(String relativePath, Path absolutePath, boolean directory) {
-            this(relativePath, absolutePath, directory, null, null, null);
-        }
-
-        WorkspaceFile(String relativePath, Path absolutePath, boolean directory,
-                      Long fileSize, String mode, Index.IndexStat stat) {
-            this.relativePath = relativePath;
-            this.absolutePath = absolutePath;
-            this.directory = directory;
-            this.fileSize = fileSize;
-            this.mode = mode;
-            this.stat = stat;
-        }
-
-        String getRelativePath() {
-            return relativePath;
-        }
-
-        Path getAbsolutePath() {
-            return absolutePath;
-        }
-
-        boolean isDirectory() {
-            return directory;
-        }
-
-        long getSize() {
-            return fileSize != null ? fileSize : 0L;
-        }
-
-        String getMode() {
-            return mode;
-        }
-
-        Index.IndexStat getStat() {
-            return stat;
-        }
-    }
 }
