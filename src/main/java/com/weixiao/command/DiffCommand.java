@@ -86,10 +86,16 @@ public class DiffCommand extends BaseCommand {
      */
     private void diffIndexWorkspace(Repository repo, StatusResult status) throws IOException {
         List<String> paths = new ArrayList<>();
+        paths.addAll(status.getConflicts().keySet());
         paths.addAll(status.getWorkspaceModified());
         paths.addAll(status.getWorkspaceDeleted());
         Collections.sort(paths);
         for (String path : paths) {
+            boolean isConflictPath = status.getConflicts().containsKey(path);
+            if (isConflictPath) {
+                printConflictDiff(path);
+                continue;
+            }
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
             if (indexEntry == null) continue;
             DiffSide aDiffSide = new DiffSide(
@@ -113,6 +119,10 @@ public class DiffCommand extends BaseCommand {
 
             printDiff(aDiffSide, bDiffSide);
         }
+    }
+
+    private static void printConflictDiff(String path) {
+        System.out.println("* Unmerged path " + path);
     }
 
     /**

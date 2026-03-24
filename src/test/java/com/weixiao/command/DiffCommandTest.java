@@ -287,9 +287,9 @@ class DiffCommandTest {
     void diff_hunk_singleChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.writeString(file, "line1\nline2\nline3\nline4\nline5");
+        Files.write(file, "line1\nline2\nline3\nline4\nline5".getBytes(StandardCharsets.UTF_8));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.writeString(file, "line1\nline2\nchanged\nline4\nline5");
+        Files.write(file, "line1\nline2\nchanged\nline4\nline5".getBytes(StandardCharsets.UTF_8));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -324,9 +324,9 @@ class DiffCommandTest {
             newContent.append("line").append(i).append("\n");
         }
 
-        Files.writeString(file, oldContent.toString());
+        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.writeString(file, newContent.toString());
+        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -370,9 +370,9 @@ class DiffCommandTest {
             newContent.append("line").append(i).append("\n");
         }
 
-        Files.writeString(file, oldContent.toString());
+        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.writeString(file, newContent.toString());
+        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -407,9 +407,9 @@ class DiffCommandTest {
         newContent.append("new2\n");
 
 
-        Files.writeString(file, oldContent.toString());
+        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.writeString(file, newContent.toString());
+        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -516,9 +516,9 @@ class DiffCommandTest {
     void diff_hunk_insertOnly(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.writeString(file, "line1\nline2\nline4\nline5");
+        Files.write(file, "line1\nline2\nline4\nline5".getBytes(StandardCharsets.UTF_8));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.writeString(file, "line1\nline2\ninsert\nline4\nline5");
+        Files.write(file, "line1\nline2\ninsert\nline4\nline5".getBytes(StandardCharsets.UTF_8));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -545,9 +545,9 @@ class DiffCommandTest {
             }
         }
 
-        Files.writeString(file, oldContent.toString());
+        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "large.txt");
-        Files.writeString(file, newContent.toString());
+        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -592,5 +592,39 @@ class DiffCommandTest {
                 break;
             }
         }
+    }
+
+    @Test
+    @DisplayName("merge 冲突后 diff 只输出 Unmerged path 提示")
+    void diff_afterMergeConflict_printsOnlyUnmergedPath(@TempDir Path tempDir) throws Exception {
+        // 构造冲突：
+        //        A(f.txt=1)
+        //       /          \
+        //   B(master=2)   C(topic=3)
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.write(f, "3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
+        assertThat(mergeResult.getErr()).contains("merge conflicts detected");
+
+        ExecuteResult diffResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
+        assertThat(diffResult.getExitCode()).isEqualTo(0);
+        assertThat(diffResult.getOutput()).contains("* Unmerged path f.txt");
+        assertThat(diffResult.getOutput()).doesNotContain("diff --git a/f.txt b/f.txt");
     }
 }
