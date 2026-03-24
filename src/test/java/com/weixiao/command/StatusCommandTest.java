@@ -583,4 +583,144 @@ class StatusCommandTest {
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput()).contains("UU conflict.txt");
     }
+
+    @Test
+    @DisplayName("冲突场景下 status 与 --porcelain 都能正确输出全部冲突类型")
+    void status_conflicts_allKinds_humanAndPorcelain(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Repository.find(tempDir);
+
+        Repository.INSTANCE.getIndex().load();
+        // [1,2,3] -> UU / both modified
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "uu.txt",
+                entry("uu.txt", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                entry("uu.txt", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                entry("uu.txt", "cccccccccccccccccccccccccccccccccccccccc")
+        );
+        // [1,2] -> UD / deleted by them
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "ud.txt",
+                entry("ud.txt", "1111111111111111111111111111111111111111"),
+                entry("ud.txt", "2222222222222222222222222222222222222222"),
+                null
+        );
+        // [1,3] -> DU / deleted by us
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "du.txt",
+                entry("du.txt", "1212121212121212121212121212121212121212"),
+                null,
+                entry("du.txt", "3434343434343434343434343434343434343434")
+        );
+        // [2,3] -> AA / both added
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "aa.txt",
+                null,
+                entry("aa.txt", "abababababababababababababababababababab"),
+                entry("aa.txt", "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd")
+        );
+        // [2] -> AU / added by us
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "au.txt",
+                null,
+                entry("au.txt", "5555555555555555555555555555555555555555"),
+                null
+        );
+        // [3] -> UA / added by them
+        Repository.INSTANCE.getIndex().addConflictSet(
+                "ua.txt",
+                null,
+                null,
+                entry("ua.txt", "6666666666666666666666666666666666666666")
+        );
+        Repository.INSTANCE.getIndex().save();
+
+        ExecuteResult humanResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
+        assertThat(humanResult.getExitCode()).isEqualTo(0);
+        assertThat(humanResult.getOutput()).contains("Unmerged paths:");
+        assertThat(humanResult.getOutput()).contains("both modified:   uu.txt");
+        assertThat(humanResult.getOutput()).contains("deleted by them:   ud.txt");
+        assertThat(humanResult.getOutput()).contains("deleted by us:   du.txt");
+        assertThat(humanResult.getOutput()).contains("both added:   aa.txt");
+        assertThat(humanResult.getOutput()).contains("added by us:   au.txt");
+        assertThat(humanResult.getOutput()).contains("added by them:   ua.txt");
+
+        ExecuteResult porcelainResult = JitTestUtil.executeWithCapturedOut(
+                JIT,
+                "-C",
+                tempDir.toString(),
+                "status",
+                "--porcelain"
+        );
+        assertThat(porcelainResult.getExitCode()).isEqualTo(0);
+        assertThat(porcelainResult.getOutput()).contains("UU uu.txt");
+        assertThat(porcelainResult.getOutput()).contains("UD ud.txt");
+        assertThat(porcelainResult.getOutput()).contains("DU du.txt");
+        assertThat(porcelainResult.getOutput()).contains("AA aa.txt");
+        assertThat(porcelainResult.getOutput()).contains("AU au.txt");
+        assertThat(porcelainResult.getOutput()).contains("UA ua.txt");
+    }
+
+    @Test
+    @DisplayName("merge 产生冲突后 status 与 --porcelain 都可正常展示")
+    void status_afterMergeConflict_showsExpectedOutput(@TempDir Path tempDir) throws Exception {
+        // 场景（文本示意图）：
+        //
+        //          A (f.txt=1)
+        //         /           \
+        //   master:B         topic:C
+        //   (f.txt=2)        (f.txt=3)
+        //
+        // 执行步骤：
+        // 1) 在 master 上执行 merge topic，触发同一路径内容冲突；
+        // 2) merge 命令返回失败（conflict state）；
+        // 3) 随后执行 jit status，应出现 "Unmerged paths" + "both modified: f.txt"；
+        // 4) 执行 jit status --porcelain，应出现 "UU f.txt"。
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+
+        // A: f.txt=1
+        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        // B(master): f.txt=2
+        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        // C(topic): f.txt=3
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.write(f, "3".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        // 在 master 上执行 merge topic，触发冲突
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
+        assertThat(mergeResult.getErr()).contains("merge conflicts detected");
+
+        // 冲突后 human-readable status 仍能正常输出
+        ExecuteResult humanStatus = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
+        assertThat(humanStatus.getExitCode()).isEqualTo(0);
+        assertThat(humanStatus.getOutput()).contains("Unmerged paths:");
+        assertThat(humanStatus.getOutput()).contains("both modified:   f.txt");
+
+        // 冲突后 porcelain status 仍能正常输出
+        ExecuteResult porcelainStatus = JitTestUtil.executeWithCapturedOut(
+                JIT,
+                "-C",
+                tempDir.toString(),
+                "status",
+                "--porcelain"
+        );
+        assertThat(porcelainStatus.getExitCode()).isEqualTo(0);
+        assertThat(porcelainStatus.getOutput()).contains("UU f.txt");
+    }
+
+    private static TreeEntry entry(String path, String oid) {
+        return new TreeEntry("100644", path, oid);
+    }
 }
