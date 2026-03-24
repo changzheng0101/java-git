@@ -13,7 +13,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * Merge 解析与执行：基于 Inputs，把 base->merge 的净变化应用到 workspace 与 index。
@@ -33,10 +35,20 @@ public final class MergeResolve {
      * 只写入工作区、不写入 index 的重命名冲突文件（例如 f.txt~HEAD）。
      */
     private final Map<String, TreeEntry> untracked = new HashMap<>();
+    private Consumer<String> progressListener = s -> {
+    };
 
     public MergeResolve(MergeInputs inputs, String mergeRevisionName) {
         this.inputs = inputs;
         this.mergeRevisionName = mergeRevisionName;
+    }
+
+    /**
+     * 注册 merge 过程中的进度回调，供命令层输出用户可见信息。
+     */
+    public void onProgress(Consumer<String> onProgress) {
+        this.progressListener = onProgress != null ? onProgress : s -> {
+        };
     }
 
     public void execute() throws IOException {
@@ -49,13 +61,9 @@ public final class MergeResolve {
         writeUntrackedFiles();
     }
 
-    public boolean hasConflicts() {
-        return !conflicts.isEmpty();
-    }
-
     private void prepareTreeDiffs() throws IOException {
-        List<DiffEntry> leftDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getHeadOid(), java.nio.file.Paths.get(""));
-        List<DiffEntry> rightDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getMergeOid(), java.nio.file.Paths.get(""));
+        List<DiffEntry> leftDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getHeadOid(), Paths.get(""));
+        List<DiffEntry> rightDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getMergeOid(), Paths.get(""));
 
         Map<String, DiffEntry> leftByPath = toPathMap(leftDiff);
         Map<String, DiffEntry> rightByPath = toPathMap(rightDiff);
@@ -97,7 +105,10 @@ public final class MergeResolve {
             conflicts.add(Objects.equals(name, LEFT_NAME) ?
                     new Conflict(parentPath, oldItem, newItem, null) : new Conflict(parentPath, oldItem, null, newItem));
             cleanDiff.removeIf(e -> parentPath.equals(PathUtils.normalizePath(e.getPath())));
-            untracked.put(parentPath + "~" + name, newItem);
+            String renamedPath = parentPath + "~" + name;
+            untracked.put(renamedPath, newItem);
+            emitProgress("CONFLICT (file/directory): There is a directory with name " + parentPath
+                    + " in " + mergeRevisionName + ". Adding " + parentPath + " as " + renamedPath);
         }
     }
 
@@ -132,9 +143,11 @@ public final class MergeResolve {
         MergeResult<String> modeMerge = mergeModes(modeOf(base), modeOf(ours), modeOf(theirs));
         if (!blobMerge.clean || !modeMerge.clean) {
             conflicts.add(new Conflict(path, base, ours, theirs));
+            emitProgress("Auto-merging " + path);
+            emitProgress("CONFLICT (content): Merge conflict in " + path);
         }
 
-
+        // 创建对应的cleanDiff，能兼容冲突的情况
         TreeEntry merged = toMergedEntry(path, modeMerge.value, blobMerge.value);
         DiffEntry mergedDiff = buildDiffAgainstLeft(path, ours, merged);
         if (mergedDiff != null) {
@@ -273,6 +286,10 @@ public final class MergeResolve {
             byte[] content = Repository.INSTANCE.getDatabase().loadBlob(entry.getOid()).toBytes();
             Repository.INSTANCE.getWorkspace().writeFile(e.getKey(), content, entry.getMode());
         }
+    }
+
+    private void emitProgress(String message) {
+        progressListener.accept(message);
     }
 
     private static final class Conflict {

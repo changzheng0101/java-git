@@ -415,6 +415,8 @@ class MergeCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("merge conflicts detected");
+        assertThat(result.getOutput()).contains("Auto-merging f.txt");
+        assertThat(result.getOutput()).contains("CONFLICT (content): Merge conflict in f.txt");
 
         String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
         assertThat(headAfterMerge).isEqualTo(headBeforeMerge);
@@ -483,6 +485,8 @@ class MergeCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("merge conflicts detected");
+        assertThat(result.getOutput()).contains("CONFLICT (file/directory):");
+        assertThat(result.getOutput()).contains("Adding f.txt as f.txt~HEAD");
         assertThat(Repository.INSTANCE.getRefs().readHead()).isEqualTo(headBeforeMerge);
 
         Path rightPath = tempDir.resolve("f.txt").resolve("g.txt");
@@ -549,6 +553,8 @@ class MergeCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("merge conflicts detected");
+        assertThat(result.getOutput()).contains("CONFLICT (file/directory):");
+        assertThat(result.getOutput()).contains("Adding f.txt as f.txt~topic");
         assertThat(Repository.INSTANCE.getRefs().readHead()).isEqualTo(headBeforeMerge);
 
         Path keptPath = tempDir.resolve("f.txt").resolve("g.txt");
@@ -604,7 +610,7 @@ class MergeCommandTest {
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
         assertThat(result.getExitCode()).isNotEqualTo(0);
-        assertThat(result.getErr()).contains("merge has conflicts in index");
+        assertThat(result.getErr()).contains("merge conflicts detected");
 
         String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
         assertThat(headAfterMerge).isEqualTo(headBeforeMerge);

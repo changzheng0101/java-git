@@ -3,9 +3,7 @@ package com.weixiao.command;
 import com.weixiao.merge.MergeInputs;
 import com.weixiao.merge.MergeResolve;
 import com.weixiao.obj.Commit;
-import com.weixiao.repo.Migration;
-import com.weixiao.repo.ObjectDatabase;
-import com.weixiao.repo.TreeBuilder;
+import com.weixiao.repo.*;
 import com.weixiao.revision.RevisionParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,14 +54,11 @@ public class MergeCommand extends BaseCommand {
                 return;
             }
 
-            if (repo.getIndex().isConflicted()) {
-                System.err.println("error: merge has conflicts in index.");
-                exitCode = 1;
-                return;
-            }
             MergeResolve mergeResolve = new MergeResolve(inputs, rev);
+            mergeResolve.onProgress(System.out::println);
             mergeResolve.execute();
-            if (mergeResolve.hasConflicts()) {
+
+            if (repo.getIndex().isConflicted()) {
                 System.err.println("error: merge conflicts detected.");
                 exitCode = 1;
                 return;
