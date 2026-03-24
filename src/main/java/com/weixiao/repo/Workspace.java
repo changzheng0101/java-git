@@ -199,13 +199,13 @@ public final class Workspace {
      * 将内容写入工作区相对路径；先创建父目录再写入，并根据 mode 设置可执行位（100755）。
      */
     public void writeFile(String relativePath, byte[] content, String mode) throws IOException {
-        Path filePath = root.resolve(relativePath.replace('\\', '/')).normalize();
+        Path filePath = root.resolve(PathUtils.normalizePath(relativePath)).normalize();
         if (!filePath.startsWith(root)) {
             throw new IOException("path escapes workspace: " + relativePath);
         }
         Path parent = filePath.getParent();
-        if (parent != null && !Files.exists(parent)) {
-            Files.createDirectories(parent);
+        if (parent != null) {
+            ensureParentDirectories(parent);
         }
         Files.write(filePath, content != null ? content : new byte[0]);
         if ("100755".equals(mode)) {
@@ -216,6 +216,29 @@ public final class Workspace {
             }
         }
         log.debug("writeFile path={} size={} mode={}", relativePath, content != null ? content.length : 0, mode);
+    }
+
+    /**
+     * 确保父目录链存在；若父路径上已存在同名文件，则先删除该文件并创建目录（记录 warn）。
+     */
+    private void ensureParentDirectories(Path parent) throws IOException {
+        Path relativeParent = root.relativize(parent);
+        Path current = root;
+        for (Path name : relativeParent) {
+            current = current.resolve(name).normalize();
+            if (!Files.exists(current)) {
+                Files.createDirectory(current);
+                continue;
+            }
+            if (Files.isDirectory(current)) {
+                continue;
+            }
+
+            String conflictedPath = PathUtils.normalizePath(root.relativize(current));
+            log.warn("path {} is a file, delete and recreate as directory", conflictedPath);
+            Files.delete(current);
+            Files.createDirectory(current);
+        }
     }
 
     /**

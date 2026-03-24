@@ -164,4 +164,79 @@ class TreeDiffTest {
         assertThat(modified.get(0).getEntryA().getOid()).isNotEqualTo(modified.get(0).getEntryB().getOid());
     }
 
+    @Test
+    @DisplayName("同名路径从文件变目录时：a 删除，a/b.txt 新增")
+    void diff_fileToDirectory_samePath_reportsDeleteAndCreate(@TempDir Path dir) throws Exception {
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
+
+        // A: file a
+        Path aPath = dir.resolve("a");
+        Files.write(aPath, "file-a".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "A");
+        String commitOidA = repo.getRefs().readHead();
+
+        // B: dir a with file a/b.txt
+        Files.delete(aPath);
+        Files.createDirectories(aPath);
+        Files.write(aPath.resolve("b.txt"), "nested".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a/b.txt");
+        repo.getIndex().load();
+        repo.getIndex().remove("a");
+        repo.getIndex().save();
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "B");
+        String commitOidB = repo.getRefs().readHead();
+
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
+        List<DiffEntry> created = entries.stream()
+                .filter(e -> e.getStatus() == DiffEntry.DiffStatus.CREATED)
+                .collect(Collectors.toList());
+        List<DiffEntry> deleted = entries.stream()
+                .filter(e -> e.getStatus() == DiffEntry.DiffStatus.DELETED)
+                .collect(Collectors.toList());
+
+        assertThat(created).extracting(e -> e.getPath().toString()).contains("a/b.txt");
+        assertThat(deleted).extracting(e -> e.getPath().toString()).contains("a");
+        assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("同名路径从目录变文件时：a/b.txt 删除，a 新增")
+    void diff_directoryToFile_samePath_reportsDeleteAndCreate(@TempDir Path dir) throws Exception {
+        JIT.execute("-C", dir.toString(), "init");
+        Repository repo = Repository.find(dir);
+
+        // A: dir a with file a/b.txt
+        Path aPath = dir.resolve("a");
+        Files.createDirectories(aPath);
+        Files.write(aPath.resolve("b.txt"), "nested".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a/b.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "A");
+        String commitOidA = repo.getRefs().readHead();
+
+        // B: file a
+        Files.delete(aPath.resolve("b.txt"));
+        Files.delete(aPath);
+        Files.write(aPath, "file-a".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a");
+        repo.getIndex().load();
+        repo.getIndex().remove("a/b.txt");
+        repo.getIndex().save();
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "B");
+        String commitOidB = repo.getRefs().readHead();
+
+        List<DiffEntry> entries = TreeDiff.diff(commitOidA, commitOidB, Paths.get(""));
+        List<DiffEntry> created = entries.stream()
+                .filter(e -> e.getStatus() == DiffEntry.DiffStatus.CREATED)
+                .collect(Collectors.toList());
+        List<DiffEntry> deleted = entries.stream()
+                .filter(e -> e.getStatus() == DiffEntry.DiffStatus.DELETED)
+                .collect(Collectors.toList());
+
+        assertThat(created).extracting(e -> e.getPath().toString()).contains("a");
+        assertThat(deleted).extracting(e -> e.getPath().toString()).contains("a/b.txt");
+        assertThat(entries.stream().filter(e -> e.getStatus() == DiffEntry.DiffStatus.MODIFIED)).isEmpty();
+    }
+
 }

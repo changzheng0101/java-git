@@ -433,6 +433,138 @@ class MergeCommandTest {
         assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt", 3)).isNotNull();
     }
 
+    /**
+     * 场景：目录/文件名互斥冲突（D/F conflict）。
+     *
+     * 文本示意图：
+     *
+     *        A(empty)
+     *       /        \
+     *   B(master):   C(topic):
+     *   add f.txt    add f.txt/g.txt
+     *
+     * 在 master 上 merge topic 后：
+     * - 保留 f.txt/g.txt 到工作区和 index；
+     * - 冲突路径 f.txt 以 f.txt~HEAD 写入工作区（不写入 index）；
+     * - merge 失败且不写新 commit。
+     */
+    @Test
+    @DisplayName("目录/文件名冲突时保留右侧路径并写入 f.txt~HEAD")
+    void merge_pathTypeConflict_writesHeadRenamedFileAndKeepsRightPath(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+
+        // A: 空提交（通过一个占位文件再删除保持流程简单）
+        Path keep = tempDir.resolve("keep.txt");
+        Files.write(keep, "k".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "keep.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        // C(topic): add f.txt/g.txt
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Path dirF = tempDir.resolve("f.txt");
+        Files.createDirectories(dirF);
+        Path g = dirF.resolve("g.txt");
+        Files.write(g, "right".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt/g.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        // 回到 master 后在 master 上提交 B：add f.txt
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "left".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        // 在 master merge topic
+        Repository.find(tempDir);
+        String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("merge conflicts detected");
+        assertThat(Repository.INSTANCE.getRefs().readHead()).isEqualTo(headBeforeMerge);
+
+        Path rightPath = tempDir.resolve("f.txt").resolve("g.txt");
+        Path renamedHeadPath = tempDir.resolve("f.txt~HEAD");
+        assertThat(Files.exists(rightPath)).isTrue();
+        assertThat(Files.exists(renamedHeadPath)).isTrue();
+        assertThat(new String(Files.readAllBytes(rightPath), StandardCharsets.UTF_8)).isEqualTo("right");
+        assertThat(new String(Files.readAllBytes(renamedHeadPath), StandardCharsets.UTF_8)).isEqualTo("left");
+
+        Repository.INSTANCE.getIndex().load();
+        assertThat(Repository.INSTANCE.getIndex().isConflicted()).isTrue();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt/g.txt", 0)).isNotNull();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt~HEAD", 0)).isNull();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt", 2)).isNotNull();
+    }
+
+    /**
+     * 场景：目录/文件名互斥冲突（D/F conflict）反向用例。
+     *
+     * 文本示意图：
+     *
+     *        A(empty)
+     *       /        \
+     *   B(master):   C(topic):
+     *   add f.txt/g.txt  add f.txt
+     *
+     * 在 master 上 merge topic 后：
+     * - 保留 f.txt/g.txt 到工作区和 index；
+     * - 右侧冲突路径 f.txt 以 f.txt~topic 写入工作区（不写入 index）；
+     * - merge 失败且不写新 commit。
+     */
+    @Test
+    @DisplayName("目录/文件名冲突反向场景会写入 f.txt~topic")
+    void merge_pathTypeConflict_reverse_writesMergeSideRenamedFile(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+
+        // A: 空提交（通过占位文件建立初始提交）
+        Path keep = tempDir.resolve("keep.txt");
+        Files.write(keep, "k".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "keep.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        // B(master): add f.txt/g.txt
+        Path dirF = tempDir.resolve("f.txt");
+        Files.createDirectories(dirF);
+        Path g = dirF.resolve("g.txt");
+        Files.write(g, "left-dir".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt/g.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        // C(topic): add f.txt
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Path f = tempDir.resolve("f.txt");
+        Files.write(f, "right-file".getBytes(StandardCharsets.UTF_8));
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        // 回到 master 执行 merge topic -> has bug
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Repository.find(tempDir);
+        String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("merge conflicts detected");
+        assertThat(Repository.INSTANCE.getRefs().readHead()).isEqualTo(headBeforeMerge);
+
+        Path keptPath = tempDir.resolve("f.txt").resolve("g.txt");
+        Path renamedMergePath = tempDir.resolve("f.txt~topic");
+        assertThat(Files.exists(keptPath)).isTrue();
+        assertThat(Files.exists(renamedMergePath)).isTrue();
+        assertThat(new String(Files.readAllBytes(keptPath), StandardCharsets.UTF_8)).isEqualTo("left-dir");
+        assertThat(new String(Files.readAllBytes(renamedMergePath), StandardCharsets.UTF_8)).isEqualTo("right-file");
+
+        Repository.INSTANCE.getIndex().load();
+        assertThat(Repository.INSTANCE.getIndex().isConflicted()).isTrue();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt/g.txt", 0)).isNotNull();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt~topic", 0)).isNull();
+        assertThat(Repository.INSTANCE.getIndex().getEntryForPath("f.txt", 3)).isNotNull();
+    }
+
     @Test
     @DisplayName("merge 后若 index 仍处于冲突态则失败且不写新 commit")
     void merge_conflictedIndexAfterResolve_failsWithoutCommit(@TempDir Path tempDir) throws Exception {

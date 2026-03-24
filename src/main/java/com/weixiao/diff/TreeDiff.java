@@ -59,7 +59,7 @@ public final class TreeDiff {
                 continue;
             }
             Tree tree = db.loadTree(currentTreeOid);
-            TreeEntry entry = findEntry(tree, dirName);
+            TreeEntry entry = findEntryByName(tree, dirName);
             if (entry == null) {
                 throw new IOException("path not found in tree: " + prefix + " (missing: " + dirName + ")");
             }
@@ -73,13 +73,12 @@ public final class TreeDiff {
 
 
     /**
-     * @param tree Tree
-     * @param name 要找的文件夹
-     * @return 找到对应文件夹的名字，就返回该文件夹对应的TreeEntry，否则返回null
+     * 在 tree 中按名称查找 entry
+     * 只要名称相同就会返回，不管返回的是 文件还是文件夹
      */
-    private static TreeEntry findEntry(Tree tree, String name) {
+    private static TreeEntry findEntryByName(Tree tree, String name) {
         for (TreeEntry e : tree.getEntries()) {
-            if (e.getName().equals(name)) {
+            if (Objects.equals(e.getName(), name)) {
                 return e;
             }
         }
@@ -119,35 +118,49 @@ public final class TreeDiff {
 
         for (TreeEntry entryB : treeB.getEntries()) {
             Path childPath = base.resolve(entryB.getName());
-            TreeEntry entryA = findEntry(treeA, entryB.getName());
-            if (entryB.isDirectory() && entryA == null) {
-                diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), childPath));
-            }
-            if (entryB.isDirectory() && entryA != null && entryA.isDirectory()) {
+            TreeEntry entryA = findEntryByName(treeA, entryB.getName());
+            if (entryA == null) {
+                if (entryB.isDirectory()) {
+                    diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), childPath));
+                } else {
+                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, childPath));
+                }
                 continue;
             }
 
-            if (entryA == null) {
+            if (entryA.isDirectory() && entryB.isDirectory()) {
+                diffEntries.addAll(compareTrees(db, db.loadTree(entryA.getOid()), db.loadTree(entryB.getOid()), childPath));
+                continue;
+            }
+
+            // A 是目录，B 是文件：目录下文件全部删除，同时该路径新增文件。
+            if (entryA.isDirectory()) {
+                diffEntries.addAll(compareTrees(db, db.loadTree(entryA.getOid()), null, childPath));
                 diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, childPath));
-            } else if (!entryB.isDirectory() && !Objects.equals(entryA, entryB)) {
+                continue;
+            }
+
+            // A 是文件，B 是目录：该路径文件删除，同时目录下文件全部新增。
+            if (entryB.isDirectory()) {
+                diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, childPath));
+                diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), childPath));
+                continue;
+            }
+
+            if (!Objects.equals(entryA, entryB)) {
                 diffEntries.add(new DiffEntry(DiffStatus.MODIFIED, entryA, entryB, childPath));
             }
         }
 
         for (TreeEntry entryA : treeA.getEntries()) {
             Path childPath = base.resolve(entryA.getName());
-
-            if (entryA.isDirectory()) {
-                TreeEntry bEntry = findEntry(treeB, entryA.getName());
-                diffEntries.addAll(compareTrees(db,
-                    db.loadTree(entryA.getOid()),
-                    bEntry == null ? null : db.loadTree(bEntry.getOid()),
-                    childPath));
-                continue;
-            }
-
-            if (findEntry(treeB, entryA.getName()) == null) {
-                diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, childPath));
+            TreeEntry entryB = findEntryByName(treeB, entryA.getName());
+            if (entryB == null) {
+                if (entryA.isDirectory()) {
+                    diffEntries.addAll(compareTrees(db, db.loadTree(entryA.getOid()), null, childPath));
+                } else {
+                    diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, childPath));
+                }
             }
         }
 

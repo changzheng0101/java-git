@@ -12,15 +12,15 @@ import com.weixiao.utils.PathUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.nio.file.Path;
+import java.util.*;
 
 /**
  * Merge 解析与执行：基于 Inputs，把 base->merge 的净变化应用到 workspace 与 index。
  */
 public final class MergeResolve {
+
+    private static final String LEFT_NAME = "HEAD";
 
     private final MergeInputs inputs;
     private final String mergeRevisionName;
@@ -29,6 +29,10 @@ public final class MergeResolve {
      */
     private final List<DiffEntry> cleanDiff = new ArrayList<>();
     private final List<Conflict> conflicts = new ArrayList<>();
+    /**
+     * 只写入工作区、不写入 index 的重命名冲突文件（例如 f.txt~HEAD）。
+     */
+    private final Map<String, TreeEntry> untracked = new HashMap<>();
 
     public MergeResolve(MergeInputs inputs, String mergeRevisionName) {
         this.inputs = inputs;
@@ -42,6 +46,7 @@ public final class MergeResolve {
         migration.applyChanges();
 
         applyConflictsToIndex();
+        writeUntrackedFiles();
     }
 
     public boolean hasConflicts() {
@@ -53,11 +58,46 @@ public final class MergeResolve {
         List<DiffEntry> rightDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getMergeOid(), java.nio.file.Paths.get(""));
 
         Map<String, DiffEntry> leftByPath = toPathMap(leftDiff);
+        Map<String, DiffEntry> rightByPath = toPathMap(rightDiff);
         cleanDiff.clear();
         conflicts.clear();
 
         for (DiffEntry right : rightDiff) {
+            if (right.getEntryB() != null) {
+                fileDirConflictCheck(right.getPath(), leftByPath, LEFT_NAME);
+            }
             processRightDiffEntry(right, leftByPath);
+        }
+
+        for (DiffEntry left : leftDiff) {
+            if (left.getEntryB() != null) {
+                fileDirConflictCheck(left.getPath(), rightByPath, mergeRevisionName);
+            }
+        }
+    }
+
+    /**
+     * 检测 a/b 和 a/b/c.txt 同时存在的情况
+     * b 不能同时为 dir 和 file
+     *
+     * @param path       要合并的路径，需要确保这个文件的parent dir都为dir
+     * @param diffByPath 对应name的diff
+     * @param name       只可能为 HEAD 和 即将合并过来的分支名
+     */
+    private void fileDirConflictCheck(Path path, Map<String, DiffEntry> diffByPath, String name) {
+        String normalizedPath = PathUtils.normalizePath(path);
+        for (String parentPath : PathUtils.getAllParentDir(normalizedPath)) {
+            DiffEntry parentDiff = diffByPath.get(PathUtils.normalizePath(parentPath));
+            if (parentDiff == null || parentDiff.getEntryB() == null) {
+                continue;
+            }
+
+            TreeEntry oldItem = parentDiff.getEntryA();
+            TreeEntry newItem = parentDiff.getEntryB();
+            conflicts.add(Objects.equals(name, LEFT_NAME) ?
+                    new Conflict(parentPath, oldItem, newItem, null) : new Conflict(parentPath, oldItem, null, newItem));
+            cleanDiff.removeIf(e -> parentPath.equals(PathUtils.normalizePath(e.getPath())));
+            untracked.put(parentPath + "~" + name, newItem);
         }
     }
 
@@ -225,6 +265,14 @@ public final class MergeResolve {
             index.addConflictSet(c.path, c.base, c.left, c.right);
         }
         index.save();
+    }
+
+    private void writeUntrackedFiles() throws IOException {
+        for (Map.Entry<String, TreeEntry> e : untracked.entrySet()) {
+            TreeEntry entry = e.getValue();
+            byte[] content = Repository.INSTANCE.getDatabase().loadBlob(entry.getOid()).toBytes();
+            Repository.INSTANCE.getWorkspace().writeFile(e.getKey(), content, entry.getMode());
+        }
     }
 
     private static final class Conflict {

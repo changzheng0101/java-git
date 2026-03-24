@@ -75,3 +75,31 @@ echo "3" > data.txt
 jit add data.txt
 jit commit -m "Update data to 3 in branch-B"
 ```
+
+测试当f.txt 和 f.txt/g.txt 同时存在的冲突场景
+```bash
+# 创建并进入测试目录
+mkdir jit_test_repo && cd jit_test_repo
+
+# 初始化仓库
+jit init
+
+# 提交 A: 空提交 (使用占位文件保持流程简单)
+echo "k" > keep.txt
+jit add keep.txt
+jit commit -m "A"
+jit branch topic
+
+# 提交 C (在 topic 分支): 创建目录 f.txt 并在其中创建 g.txt
+jit checkout topic
+mkdir -p f.txt
+echo "right" > f.txt/g.txt
+jit add f.txt/g.txt
+jit commit -m "C"
+
+# 提交 B (回到 master 分支): 创建文件 f.txt
+jit checkout master
+echo "left" > f.txt
+jit add f.txt
+jit commit -m "B"
+```
