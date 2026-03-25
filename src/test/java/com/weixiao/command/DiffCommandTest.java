@@ -22,6 +22,33 @@ class DiffCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
+    private static void createSimpleMergeConflict(Path tempDir) throws Exception {
+        // 构造冲突：
+        //        A(f.txt=1)
+        //       /          \
+        //   B(master=2)   C(topic=3)
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+        Files.writeString(f, "1");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.writeString(f, "2");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.writeString(f, "3");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
+        assertThat(mergeResult.getErr()).contains("merge conflicts detected");
+    }
+
     @Test
     @DisplayName("非仓库目录执行 diff 失败")
     void diff_outsideRepo_fails(@TempDir Path dir) {
@@ -594,34 +621,47 @@ class DiffCommandTest {
     @Test
     @DisplayName("merge 冲突后 diff 只输出 Unmerged path 提示")
     void diff_afterMergeConflict_printsOnlyUnmergedPath(@TempDir Path tempDir) throws Exception {
-        // 构造冲突：
-        //        A(f.txt=1)
-        //       /          \
-        //   B(master=2)   C(topic=3)
-        JIT.execute("-C", tempDir.toString(), "init");
-        Path f = tempDir.resolve("f.txt");
-        Files.writeString(f, "1");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
-
-        Files.writeString(f, "2");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
-
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
-        Files.writeString(f, "3");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
-
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
-        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
-        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
-        assertThat(mergeResult.getErr()).contains("merge conflicts detected");
+        createSimpleMergeConflict(tempDir);
 
         ExecuteResult diffResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(diffResult.getExitCode()).isEqualTo(0);
         assertThat(diffResult.getOutput()).contains("* Unmerged path f.txt");
         assertThat(diffResult.getOutput()).doesNotContain("diff --git a/f.txt b/f.txt");
+    }
+
+    @Test
+    @DisplayName("merge 冲突后 diff --ours 输出 Unmerged path 及 stage-2 对 workspace 的 patch")
+    void diff_afterMergeConflict_withOurs_printsPatch(@TempDir Path tempDir) throws Exception {
+        createSimpleMergeConflict(tempDir);
+
+        ExecuteResult diffResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--ours");
+        assertThat(diffResult.getExitCode()).isEqualTo(0);
+        assertThat(diffResult.getOutput()).contains("* Unmerged path f.txt");
+        assertThat(diffResult.getOutput()).contains("diff --git a/f.txt b/f.txt");
+        assertThat(diffResult.getOutput()).contains("<<<<<<< HEAD");
+    }
+
+    @Test
+    @DisplayName("merge 冲突后 diff -1 输出 Unmerged path 及 stage-1 对 workspace 的 patch")
+    void diff_afterMergeConflict_withBaseShortOption_printsPatch(@TempDir Path tempDir) throws Exception {
+        createSimpleMergeConflict(tempDir);
+
+        ExecuteResult diffResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "-1");
+        assertThat(diffResult.getExitCode()).isEqualTo(0);
+        assertThat(diffResult.getOutput()).contains("* Unmerged path f.txt");
+        assertThat(diffResult.getOutput()).contains("diff --git a/f.txt b/f.txt");
+        assertThat(diffResult.getOutput()).contains("<<<<<<< HEAD");
+    }
+
+    @Test
+    @DisplayName("merge 冲突后 diff -3 输出 Unmerged path 及 stage-3 对 workspace 的 patch")
+    void diff_afterMergeConflict_withTheirsShortOption_printsPatch(@TempDir Path tempDir) throws Exception {
+        createSimpleMergeConflict(tempDir);
+
+        ExecuteResult diffResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "-3");
+        assertThat(diffResult.getExitCode()).isEqualTo(0);
+        assertThat(diffResult.getOutput()).contains("* Unmerged path f.txt");
+        assertThat(diffResult.getOutput()).contains("diff --git a/f.txt b/f.txt");
+        assertThat(diffResult.getOutput()).contains(">>>>>>> topic");
     }
 }

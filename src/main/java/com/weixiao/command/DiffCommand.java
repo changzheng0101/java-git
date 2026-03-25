@@ -45,6 +45,18 @@ public class DiffCommand extends BaseCommand {
     @Option(names = {"--no-color"}, description = "关闭彩色输出")
     private boolean noColor;
 
+    @SuppressWarnings("unused")
+    @Option(names = {"--base", "-1"}, description = "冲突文件以 stage-1（base）为基准显示 diff")
+    private boolean base;
+
+    @SuppressWarnings("unused")
+    @Option(names = {"--ours", "-2"}, description = "冲突文件以 stage-2（ours）为基准显示 diff")
+    private boolean ours;
+
+    @SuppressWarnings("unused")
+    @Option(names = {"--theirs", "-3"}, description = "冲突文件以 stage-3（theirs）为基准显示 diff")
+    private boolean theirs;
+
     @Override
     protected void initParams() {
         params = new LinkedHashMap<>();
@@ -53,6 +65,15 @@ public class DiffCommand extends BaseCommand {
         }
         if (noColor) {
             params.put("noColor", "");
+        }
+        if (base) {
+            params.put("stage", "1");
+        }
+        if (ours) {
+            params.put("stage", "2");
+        }
+        if (theirs) {
+            params.put("stage", "3");
         }
     }
 
@@ -114,9 +135,20 @@ public class DiffCommand extends BaseCommand {
         }
     }
 
-    private static void printConflictDiff(String path) {
+    private void printConflictDiff(String path) throws IOException {
         System.out.println("* Unmerged path " + path);
+
+        Index.Entry indexEntry = Repository.INSTANCE.getIndex().getEntryForPath(path, getStageFromParams());
+        if (indexEntry == null) {
+            return;
+        }
+
+        DiffSide aDiffSide = new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));
+        DiffSide bDiffSide = fromWorkSpace(path);
+
+        printDiff(aDiffSide, bDiffSide);
     }
+
 
     /**
      * 对比 HEAD 与 index：对 indexAdded、indexModified、indexDeleted 中的路径输出 diff。
@@ -338,5 +370,14 @@ public class DiffCommand extends BaseCommand {
             }
         }
         return n;
+    }
+
+
+    private int getStageFromParams() {
+        String stage = params.get("stage");
+        if (stage == null) {
+            return -1;
+        }
+        return Integer.parseInt(stage);
     }
 }
