@@ -73,6 +73,6 @@ public class InitCommand extends BaseCommand {
         }
 
         log.info("repository initialized at {}", gitPath);
-        System.out.println("Initialized empty Jit repository in " + gitPath);
+        System.out.println("Initialized emptyTree Jit repository in " + gitPath);
     }
 }

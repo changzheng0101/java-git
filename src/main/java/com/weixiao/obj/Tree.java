@@ -6,13 +6,17 @@ import com.weixiao.utils.HexUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Git tree 对象：目录快照，条目按 name 排序。
  * 序列化：每条 mode + " " + name + "\0" + 20 字节二进制 oid。
  */
 public final class Tree implements GitObject {
+
+    private static final Tree EMPTY = new Tree(Collections.emptyList());
 
     private final List<TreeEntry> entries;
 
@@ -22,6 +26,13 @@ public final class Tree implements GitObject {
     public Tree(List<TreeEntry> entries) {
         this.entries = new ArrayList<>(entries != null ? entries : Collections.emptyList());
         this.entries.sort(Comparator.comparing(TreeEntry::getName));
+    }
+
+    /**
+     * 返回空 tree 实例。
+     */
+    public static Tree emptyTree() {
+        return EMPTY;
     }
 
     /**
@@ -68,6 +79,17 @@ public final class Tree implements GitObject {
     }
 
     /**
+     * 返回按名称索引的条目映射（name -> entry）。
+     */
+    public Map<String, TreeEntry> toEntryMap() {
+        Map<String, TreeEntry> result = new LinkedHashMap<>();
+        for (TreeEntry entry : entries) {
+            result.put(entry.getName(), entry);
+        }
+        return result;
+    }
+
+    /**
      * 返回对象类型 "tree"。
      */
     @Override
@@ -82,7 +104,6 @@ public final class Tree implements GitObject {
     public byte[] toBytes() {
         List<byte[]> parts = Lists.newArrayList();
         for (TreeEntry e : entries) {
-            byte[] nameBytes = e.getName().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             byte[] oidBinary = HexUtils.hexToBytes(e.getOid());
             String header = e.getMode() + " " + e.getName() + "\0";
             byte[] headerBytes = header.getBytes(java.nio.charset.StandardCharsets.UTF_8);

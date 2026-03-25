@@ -119,6 +119,9 @@ public final class ObjectDatabase {
      * @throws IOException 类型不匹配或者不存在的时候抛出
      */
     public Tree loadTree(String treeOid) throws IOException {
+        if (treeOid == null) {
+            return Tree.emptyTree();
+        }
         GitObject obj = this.load(treeOid);
         if (!"tree".equals(obj.getType())) {
             throw new IOException("expected tree, got " + obj.getType() + ": " + treeOid);

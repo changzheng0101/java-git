@@ -38,7 +38,7 @@ public interface Revision {
         }
         s = s.trim();
         if (s.isEmpty()) {
-            throw new RevisionParseException("empty revision");
+            throw new RevisionParseException("emptyTree revision");
         }
 
         if (s.endsWith("^")) {
@@ -59,7 +59,7 @@ public interface Revision {
 
         public Ref(String name) {
             if (name == null || name.isEmpty()) {
-                throw new IllegalArgumentException("ref name must not be empty");
+                throw new IllegalArgumentException("ref name must not be emptyTree");
             }
             this.name = name;
         }

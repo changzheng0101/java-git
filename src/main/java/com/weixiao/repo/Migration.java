@@ -43,14 +43,14 @@ public final class Migration {
     private List<DiffEntry> modifies = new ArrayList<>();
 
     /**
-     * @param currentCommitId 当前 commit oid（如 HEAD），可为 null 表示无当前提交
+     * @param currentCommitId 当前 commit oid（如 HEAD），不能为空
      * @param targetCommitOid 目标 commit oid，用于 diff、填充 index 与更新 HEAD
      */
     @SneakyThrows
     public Migration(String currentCommitId, String targetCommitOid) {
         this.currentCommitId = currentCommitId;
         this.targetCommitOid = targetCommitOid;
-        this.changes = TreeDiff.diff(currentCommitId, targetCommitOid, java.nio.file.Paths.get(""));
+        this.changes = TreeDiff.diff(currentCommitId, targetCommitOid);
     }
 
     public Migration(List<DiffEntry> changes) {

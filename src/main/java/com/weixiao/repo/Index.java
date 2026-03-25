@@ -98,12 +98,12 @@ public final class Index {
         entries.clear();
         Path indexPath = gitDir.resolve(INDEX_FILE);
         if (!Files.exists(indexPath)) {
-            log.debug("index file not found, using empty index");
+            log.debug("index file not found, using emptyTree index");
             return;
         }
         byte[] raw = Files.readAllBytes(indexPath);
         if (raw.length < 12 + CHECKSUM_SIZE) {
-            log.warn("index file too short, using empty index");
+            log.warn("index file too short, using emptyTree index");
             return;
         }
         // 校验和：最后 20 字节为前面内容的 SHA-1
@@ -114,20 +114,20 @@ public final class Index {
         System.arraycopy(raw, contentEnd, expectedChecksum, 0, CHECKSUM_SIZE);
         byte[] actualChecksum = sha1(content);
         if (!MessageDigest.isEqual(expectedChecksum, actualChecksum)) {
-            log.warn("index checksum mismatch, using empty index");
+            log.warn("index checksum mismatch, using emptyTree index");
             return;
         }
 
         ByteBuffer buf = ByteBuffer.wrap(content).order(ByteOrder.BIG_ENDIAN);
         for (int i = 0; i < 4; i++) {
             if (buf.get() != SIGNATURE[i]) {
-                log.warn("index signature invalid, using empty index");
+                log.warn("index signature invalid, using emptyTree index");
                 return;
             }
         }
         int version = buf.getInt();
         if (version != 2 && version != 3 && version != 4) {
-            log.warn("index version {} not supported, using empty index", version);
+            log.warn("index version {} not supported, using emptyTree index", version);
             return;
         }
         int numEntries = buf.getInt();

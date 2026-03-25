@@ -13,7 +13,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -62,8 +61,8 @@ public final class MergeResolve {
     }
 
     private void prepareTreeDiffs() throws IOException {
-        List<DiffEntry> leftDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getHeadOid(), Paths.get(""));
-        List<DiffEntry> rightDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getMergeOid(), Paths.get(""));
+        List<DiffEntry> leftDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getHeadOid());
+        List<DiffEntry> rightDiff = TreeDiff.diff(inputs.getBaseOid(), inputs.getMergeOid());
 
         Map<String, DiffEntry> leftByPath = toPathMap(leftDiff);
         Map<String, DiffEntry> rightByPath = toPathMap(rightDiff);

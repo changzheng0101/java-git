@@ -148,7 +148,7 @@ public final class Refs {
         }
         String path = ref.getPath();
         if (Strings.isNullOrEmpty(path)) {
-            throw new IllegalArgumentException("ref.path must not be empty");
+            throw new IllegalArgumentException("ref.path must not be emptyTree");
         }
         Path refPath = gitDir.resolve(path);
         Path dir = refPath.getParent();
@@ -203,7 +203,7 @@ public final class Refs {
      */
     public static String validateBranchName(String name) {
         if (Strings.isNullOrEmpty(name)) {
-            return "branch name is empty";
+            return "branch name is emptyTree";
         }
         if (name.contains(DOUBLE_DOT)) {
             return "branch name must not contain '..'";
@@ -302,7 +302,7 @@ public final class Refs {
      */
     public String deleteBranch(String name) throws IOException {
         if (Strings.isNullOrEmpty(name)) {
-            throw new IOException("branch name is empty");
+            throw new IOException("branch name is emptyTree");
         }
         Path refPath = gitDir.resolve(REFS_HEADS + name);
         if (!Files.exists(refPath)) {

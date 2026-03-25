@@ -28,14 +28,14 @@ class InitCommandTest {
     /**
      * 验证在指定路径执行 jit init 后，会创建完整的 .git 目录结构并输出当前分支。
      * 示例：对路径 /tmp/repo 执行 init → 生成 /tmp/repo/.git、.git/objects、.git/refs/heads，
-     * HEAD 内容为 "ref: refs/heads/master"，标准输出仅一行 "Initialized empty Jit repository in ..."（与 git init 一致）。
+     * HEAD 内容为 "ref: refs/heads/master"，标准输出仅一行 "Initialized emptyTree Jit repository in ..."（与 git init 一致）。
      */
     @Test
     @DisplayName("通过 jit init 在指定路径执行会创建 .git、.git/objects、.git/refs/heads")
     void init_createsGitStructure(@TempDir Path tempDir) throws Exception {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "init");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(result.getOutput()).contains("Initialized empty Jit repository");
+        assertThat(result.getOutput()).contains("Initialized emptyTree Jit repository");
 
         Path gitDir = tempDir.resolve(".git");
         assertThat(gitDir).exists();
@@ -72,13 +72,13 @@ class InitCommandTest {
 
     /**
      * 验证 jit init 的标准输出中包含仓库路径和当前分支说明。
-     * 示例：init 后输出包含 ".git" 和 "Initialized empty Jit repository"（与 git init 一致）。
+     * 示例：init 后输出包含 ".git" 和 "Initialized emptyTree Jit repository"（与 git init 一致）。
      */
     @Test
     @DisplayName("通过 jit init 执行时输出包含仓库路径")
     void init_outputContainsRepoPath(@TempDir Path tempDir) {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "init");
         assertThat(result.getOutput()).contains(".git");
-        assertThat(result.getOutput()).contains("Initialized empty Jit repository");
+        assertThat(result.getOutput()).contains("Initialized emptyTree Jit repository");
     }
 }

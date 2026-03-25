@@ -22,7 +22,7 @@ class CommitCommandTest {
 
     /**
      * 在无 .git 的目录执行 jit commit 时应失败，并在 stderr 中提示 not a jit repository。
-     * 示例：对空目录 /tmp/empty 执行 "jit commit -m msg /tmp/empty" → 退出码非 0，stderr 含 "not a jit repository"。
+     * 示例：对空目录 /tmp/emptyTree 执行 "jit commit -m msg /tmp/emptyTree" → 退出码非 0，stderr 含 "not a jit repository"。
      */
     @Test
     @DisplayName("在非仓库目录执行 commit 失败并提示 not a jit repository")

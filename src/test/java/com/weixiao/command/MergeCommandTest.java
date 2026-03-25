@@ -440,7 +440,7 @@ class MergeCommandTest {
      *
      * 文本示意图：
      *
-     *        A(empty)
+     *        A(emptyTree)
      *       /        \
      *   B(master):   C(topic):
      *   add f.txt    add f.txt/g.txt
@@ -508,7 +508,7 @@ class MergeCommandTest {
      *
      * 文本示意图：
      *
-     *        A(empty)
+     *        A(emptyTree)
      *       /        \
      *   B(master):   C(topic):
      *   add f.txt/g.txt  add f.txt
