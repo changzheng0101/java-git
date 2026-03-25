@@ -29,14 +29,14 @@ class TreeDiffTest {
         JIT.execute("-C", dir.toString(), "init");
         Repository repo = Repository.find(dir);
 
-        Files.write(dir.resolve("a.txt"), "a".getBytes(StandardCharsets.UTF_8));
-        Files.write(dir.resolve("b.txt"), "b".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("a.txt"), "a");
+        Files.writeString(dir.resolve("b.txt"), "b");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt", "b.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
         String commitOidA = repo.getRefs().readHead();
 
         Files.delete(dir.resolve("b.txt"));
-        Files.write(dir.resolve("c.txt"), "c".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("c.txt"), "c");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "c.txt");
         repo.getIndex().load();
         repo.getIndex().remove("b.txt");
@@ -68,12 +68,12 @@ class TreeDiffTest {
         JIT.execute("-C", dir.toString(), "init");
         Repository repo = Repository.find(dir);
 
-        Files.write(dir.resolve("a.txt"), "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("a.txt"), "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
         String commitOidA = repo.getRefs().readHead();
 
-        Files.write(dir.resolve("a.txt"), "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("a.txt"), "v2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
@@ -97,7 +97,7 @@ class TreeDiffTest {
         Repository repo = Repository.find(dir);
 
         Path f = dir.resolve("f");
-        Files.write(f, "x".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "x");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "f");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
         String commitOidA = repo.getRefs().readHead();
@@ -123,7 +123,7 @@ class TreeDiffTest {
         JIT.execute("-C", dir.toString(), "init");
         Repository repo = Repository.find(dir);
 
-        Files.write(dir.resolve("f"), "same".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("f"), "same");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "f");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
         String commitOidA = repo.getRefs().readHead();
@@ -144,12 +144,12 @@ class TreeDiffTest {
         Repository repo = Repository.find(dir);
 
         Files.createDirectories(dir.resolve("dir"));
-        Files.write(dir.resolve("dir").resolve("inner.txt"), "1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("dir").resolve("inner.txt"), "1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "dir");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "first");
         String commitOidA = repo.getRefs().readHead();
 
-        Files.write(dir.resolve("dir").resolve("inner.txt"), "2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir.resolve("dir").resolve("inner.txt"), "2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "dir");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "second");
         String commitOidB = repo.getRefs().readHead();
@@ -172,7 +172,7 @@ class TreeDiffTest {
 
         // A: file a
         Path aPath = dir.resolve("a");
-        Files.write(aPath, "file-a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(aPath, "file-a");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "A");
         String commitOidA = repo.getRefs().readHead();
@@ -180,7 +180,7 @@ class TreeDiffTest {
         // B: dir a with file a/b.txt
         Files.delete(aPath);
         Files.createDirectories(aPath);
-        Files.write(aPath.resolve("b.txt"), "nested".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(aPath.resolve("b.txt"), "nested");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a/b.txt");
         repo.getIndex().load();
         repo.getIndex().remove("a");
@@ -210,7 +210,7 @@ class TreeDiffTest {
         // A: dir a with file a/b.txt
         Path aPath = dir.resolve("a");
         Files.createDirectories(aPath);
-        Files.write(aPath.resolve("b.txt"), "nested".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(aPath.resolve("b.txt"), "nested");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a/b.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "commit", "-m", "A");
         String commitOidA = repo.getRefs().readHead();
@@ -218,7 +218,7 @@ class TreeDiffTest {
         // B: file a
         Files.delete(aPath.resolve("b.txt"));
         Files.delete(aPath);
-        Files.write(aPath, "file-a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(aPath, "file-a");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a");
         repo.getIndex().load();
         repo.getIndex().remove("a/b.txt");

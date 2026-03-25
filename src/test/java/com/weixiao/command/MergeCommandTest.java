@@ -29,11 +29,11 @@ class MergeCommandTest {
     private static void initRepoWithTwoCommits(Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
 
-        Files.write(f, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
     }
@@ -62,7 +62,7 @@ class MergeCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "v3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
     }
@@ -201,8 +201,8 @@ class MergeCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
         Path g = tempDir.resolve("g.txt");
-        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
-        Files.write(g, "1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "1");
+        Files.writeString(g, "1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
@@ -211,13 +211,13 @@ class MergeCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
 
         // 在 master 上提交 B：修改 f.txt=2
-        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
         // 切换到 topic，并基于 A 提交 C：修改 g.txt=3
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
-        Files.write(g, "3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(g, "3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 
@@ -389,7 +389,7 @@ class MergeCommandTest {
         Path f = tempDir.resolve("f.txt");
 
         // A: f.txt=1
-        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
 
@@ -397,13 +397,13 @@ class MergeCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
 
         // B(master): f.txt=2
-        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
         // C(topic): f.txt=3
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
-        Files.write(f, "3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 
@@ -457,7 +457,7 @@ class MergeCommandTest {
 
         // A: 空提交（通过一个占位文件再删除保持流程简单）
         Path keep = tempDir.resolve("keep.txt");
-        Files.write(keep, "k".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(keep, "k");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "keep.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
@@ -467,14 +467,14 @@ class MergeCommandTest {
         Path dirF = tempDir.resolve("f.txt");
         Files.createDirectories(dirF);
         Path g = dirF.resolve("g.txt");
-        Files.write(g, "right".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(g, "right");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt/g.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 
         // 回到 master 后在 master 上提交 B：add f.txt
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "left".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "left");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
@@ -525,7 +525,7 @@ class MergeCommandTest {
 
         // A: 空提交（通过占位文件建立初始提交）
         Path keep = tempDir.resolve("keep.txt");
-        Files.write(keep, "k".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(keep, "k");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "keep.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
@@ -534,14 +534,14 @@ class MergeCommandTest {
         Path dirF = tempDir.resolve("f.txt");
         Files.createDirectories(dirF);
         Path g = dirF.resolve("g.txt");
-        Files.write(g, "left-dir".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(g, "left-dir");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt/g.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
         // C(topic): add f.txt
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "right-file".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "right-file");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 
@@ -578,19 +578,19 @@ class MergeCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
         Path g = tempDir.resolve("g.txt");
-        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
-        Files.write(g, "1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "1");
+        Files.writeString(g, "1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
 
-        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
-        Files.write(g, "3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(g, "3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "g.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 

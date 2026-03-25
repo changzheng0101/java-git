@@ -37,11 +37,11 @@ class LogCommandTest {
     private static void initRepoWithTwoCommits(Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
 
-        Files.write(f, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
     }
@@ -158,7 +158,7 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "v3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 
@@ -192,7 +192,7 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "v3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 

@@ -53,7 +53,7 @@ class CommitCommandTest {
     void commit_afterAdd_succeeds(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("hello.txt");
-        Files.write(f, "hello".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "hello");
         ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "hello.txt");
         assertThat(addResult.getExitCode()).as("add err: %s", addResult.getErr()).isEqualTo(0);
 
@@ -96,13 +96,13 @@ class CommitCommandTest {
 
         Path dir1 = tempDir.resolve("dir1");
         Files.createDirectories(dir1);
-        Files.write(dir1.resolve("file1.txt"), "content1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir1.resolve("file1.txt"), "content1");
 
         Path subdir = dir1.resolve("subdir");
         Files.createDirectories(subdir);
-        Files.write(subdir.resolve("file2.txt"), "content2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(subdir.resolve("file2.txt"), "content2");
 
-        Files.write(tempDir.resolve("root.txt"), "root content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("root.txt"), "root content");
 
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "dir1", "root.txt");
 
@@ -146,7 +146,7 @@ class CommitCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path deepDir = tempDir.resolve("a").resolve("b").resolve("c").resolve("d");
         Files.createDirectories(deepDir);
-        Files.write(deepDir.resolve("file.txt"), "deep content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(deepDir.resolve("file.txt"), "deep content");
 
         ExecuteResult addResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a");
         assertThat(addResult.getExitCode()).as("add err: %s", addResult.getErr()).isEqualTo(0);

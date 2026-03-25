@@ -7,6 +7,7 @@ import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 
+import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -31,46 +32,15 @@ public final class TreeDiff {
      * @param prefix    从仓库根到目标目录的路径，空或根时表示根目录
      * @return DiffEntry 列表（每项含 status、entryA、entryB、path 为 Path）
      */
-    public static List<DiffEntry> diff(String commitIdA, String commitIdB, Path prefix)
+    public static List<DiffEntry> diff(@Nonnull String commitIdA, @Nonnull String commitIdB, Path prefix)
             throws IOException {
         ObjectDatabase db = Repository.INSTANCE.getDatabase();
-        Commit ca = (commitIdA == null || commitIdA.isEmpty()) ? null : db.loadCommit(commitIdA);
+        Commit ca = db.loadCommit(commitIdA);
         Commit cb = db.loadCommit(commitIdB);
-        Tree treeA = (ca == null) ? null : getTreeAtPrefix(db, ca.getTreeOid(), prefix);
-        if (cb == null) {
-            throw new IOException("not a commit: " + commitIdB);
-        }
-        Tree treeB = getTreeAtPrefix(db, cb.getTreeOid(), prefix);
-        return compareTrees(db, treeA, treeB, prefix);
+        Tree treeA = db.loadTree(ca.getTreeOid());
+        Tree treeB = db.loadTree(cb.getTreeOid());
+        return compareTrees(treeA, treeB, prefix);
     }
-
-    /**
-     * 根据 prefix 从根 tree 向下解析到目标 tree；prefix 为空则返回根 tree。
-     */
-    private static Tree getTreeAtPrefix(ObjectDatabase db, String rootTreeOid, Path prefix)
-            throws IOException {
-        if (prefix == null || prefix.getNameCount() == 0) {
-            return db.loadTree(rootTreeOid);
-        }
-        String currentTreeOid = rootTreeOid;
-        for (int i = 0; i < prefix.getNameCount(); i++) {
-            String dirName = prefix.getName(i).toString();
-            if (dirName.isEmpty()) {
-                continue;
-            }
-            Tree tree = db.loadTree(currentTreeOid);
-            TreeEntry entry = findEntryByName(tree, dirName);
-            if (entry == null) {
-                throw new IOException("path not found in tree: " + prefix + " (missing: " + dirName + ")");
-            }
-            if (!"40000".equals(entry.getMode())) {
-                throw new IOException("not a directory in path: " + dirName);
-            }
-            currentTreeOid = entry.getOid();
-        }
-        return db.loadTree(currentTreeOid);
-    }
-
 
     /**
      * 在 tree 中按名称查找 entry
@@ -88,67 +58,68 @@ public final class TreeDiff {
     /**
      * 比较两个 tree 的直接子项：按 name 区分 CREATED、DELETED、MODIFIED（比较 oid 与 mode）。
      */
-    private static List<DiffEntry> compareTrees(ObjectDatabase db, Tree treeA, Tree treeB, Path prefix)
+    private static List<DiffEntry> compareTrees(Tree treeA, Tree treeB, Path treePath)
             throws IOException {
+        ObjectDatabase db = Repository.INSTANCE.getDatabase();
         List<DiffEntry> diffEntries = new ArrayList<>();
-        Path base = (prefix != null && prefix.getNameCount() > 0) ? prefix : Paths.get("");
+        Path base = (treePath != null && treePath.getNameCount() > 0) ? treePath : Paths.get("");
 
         if (treeA == null) {
             for (TreeEntry entry : treeB.getEntries()) {
-                Path childPath = base.resolve(entry.getName());
+                Path entryPath = base.resolve(entry.getName());
                 if (entry.isDirectory()) {
-                    diffEntries.addAll(compareTrees(db, null, db.loadTree(entry.getOid()), childPath));
+                    diffEntries.addAll(compareTrees(null, db.loadTree(entry.getOid()), entryPath));
                 } else {
-                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entry, childPath));
+                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entry, entryPath));
                 }
             }
             return diffEntries;
         }
         if (treeB == null) {
             for (TreeEntry entry : treeA.getEntries()) {
-                Path childPath = base.resolve(entry.getName());
+                Path entryPath = base.resolve(entry.getName());
                 if (entry.isDirectory()) {
-                    diffEntries.addAll(compareTrees(db, db.loadTree(entry.getOid()), null, childPath));
+                    diffEntries.addAll(compareTrees(db.loadTree(entry.getOid()), null, entryPath));
                 } else {
-                    diffEntries.add(new DiffEntry(DiffStatus.DELETED, entry, null, childPath));
+                    diffEntries.add(new DiffEntry(DiffStatus.DELETED, entry, null, entryPath));
                 }
             }
             return diffEntries;
         }
 
         for (TreeEntry entryB : treeB.getEntries()) {
-            Path childPath = base.resolve(entryB.getName());
+            Path entryPath = base.resolve(entryB.getName());
             TreeEntry entryA = findEntryByName(treeA, entryB.getName());
             if (entryA == null) {
                 if (entryB.isDirectory()) {
-                    diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), childPath));
+                    diffEntries.addAll(compareTrees(null, db.loadTree(entryB.getOid()), entryPath));
                 } else {
-                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, childPath));
+                    diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, entryPath));
                 }
                 continue;
             }
 
             if (entryA.isDirectory() && entryB.isDirectory()) {
-                diffEntries.addAll(compareTrees(db, db.loadTree(entryA.getOid()), db.loadTree(entryB.getOid()), childPath));
+                diffEntries.addAll(compareTrees(db.loadTree(entryA.getOid()), db.loadTree(entryB.getOid()), entryPath));
                 continue;
             }
 
             // A 是目录，B 是文件：目录下文件全部删除，同时该路径新增文件。
             if (entryA.isDirectory()) {
-                diffEntries.addAll(compareTrees(db, db.loadTree(entryA.getOid()), null, childPath));
-                diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, childPath));
+                diffEntries.addAll(compareTrees(db.loadTree(entryA.getOid()), null, entryPath));
+                diffEntries.add(new DiffEntry(DiffStatus.CREATED, null, entryB, entryPath));
                 continue;
             }
 
             // A 是文件，B 是目录：该路径文件删除，同时目录下文件全部新增。
             if (entryB.isDirectory()) {
-                diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, childPath));
-                diffEntries.addAll(compareTrees(db, null, db.loadTree(entryB.getOid()), childPath));
+                diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, entryPath));
+                diffEntries.addAll(compareTrees(null, db.loadTree(entryB.getOid()), entryPath));
                 continue;
             }
 
             if (!Objects.equals(entryA, entryB)) {
-                diffEntries.add(new DiffEntry(DiffStatus.MODIFIED, entryA, entryB, childPath));
+                diffEntries.add(new DiffEntry(DiffStatus.MODIFIED, entryA, entryB, entryPath));
             }
         }
 
@@ -157,7 +128,7 @@ public final class TreeDiff {
             TreeEntry entryB = findEntryByName(treeB, entryA.getName());
             if (entryB == null) {
                 if (entryA.isDirectory()) {
-                    diffEntries.addAll(compareTrees(db, db.loadTree(entryA.getOid()), null, childPath));
+                    diffEntries.addAll(compareTrees(db.loadTree(entryA.getOid()), null, childPath));
                 } else {
                     diffEntries.add(new DiffEntry(DiffStatus.DELETED, entryA, null, childPath));
                 }

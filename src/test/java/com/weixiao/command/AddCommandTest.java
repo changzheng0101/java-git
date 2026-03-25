@@ -29,7 +29,7 @@ class AddCommandTest {
     @DisplayName("在非仓库目录执行 add 失败并提示 not a jit repository")
     void add_outsideRepo_fails(@TempDir Path dir) throws Exception {
         Path f = dir.resolve("a.txt");
-        Files.write(f, "a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "a");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", dir.toString(), "add", "a.txt");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("not a jit repository");
@@ -40,7 +40,7 @@ class AddCommandTest {
     void add_singleFile_succeeds(@TempDir Path tempDir) throws Exception {
         Jit.createCommandLine().execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("hello.txt");
-        Files.write(f, "hello".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "hello");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "hello.txt");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -58,9 +58,9 @@ class AddCommandTest {
     @DisplayName("add 多个文件，暂存区包含所有文件")
     void add_multipleFiles_succeeds(@TempDir Path tempDir) throws Exception {
         Jit.createCommandLine().execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("a.txt"), "a".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("b.txt"), "b".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("c.txt"), "c".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("a.txt"), "a");
+        Files.writeString(tempDir.resolve("b.txt"), "b");
+        Files.writeString(tempDir.resolve("c.txt"), "c");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt", "b.txt", "c.txt");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -80,8 +80,8 @@ class AddCommandTest {
         Jit.createCommandLine().execute("-C", tempDir.toString(), "init");
         Path sub = tempDir.resolve("dir");
         Files.createDirectories(sub);
-        Files.write(sub.resolve("f1.txt"), "f1".getBytes(StandardCharsets.UTF_8));
-        Files.write(sub.resolve("f2.txt"), "f2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(sub.resolve("f1.txt"), "f1");
+        Files.writeString(sub.resolve("f2.txt"), "f2");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "dir");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -125,13 +125,13 @@ class AddCommandTest {
     @DisplayName("add hello.txt 再 add hello.txt/a.txt 时只保留 hello.txt/a.txt")
     void add_helloThenHelloSlashA_removesHello(@TempDir Path tempDir) throws Exception {
         Jit.createCommandLine().execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("hello.txt"), "hello".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("hello.txt"), "hello");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "hello.txt");
 
         Path helloDir = tempDir.resolve("hello.txt");
         Files.delete(helloDir);
         Files.createDirectories(helloDir);
-        Files.write(helloDir.resolve("a.txt"), "a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(helloDir.resolve("a.txt"), "a");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "hello.txt/a.txt");
         assertThat(result.getExitCode()).as("add hello.txt/a.txt err: %s", result.getErr()).isEqualTo(0);
 

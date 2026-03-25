@@ -35,7 +35,7 @@ class BranchCommandTest {
     private static void initRepoWithOneCommit(Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "x".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "x");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
     }

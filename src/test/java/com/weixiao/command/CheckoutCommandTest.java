@@ -36,7 +36,7 @@ class CheckoutCommandTest {
     private static String initRepoWithOneCommit(Path tempDir, String message) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         ExecuteResult commit = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", message);
         assertThat(commit.getExitCode()).as("commit out: %s err: %s", commit.getOutput(), commit.getErr()).isEqualTo(0);
@@ -73,11 +73,11 @@ class CheckoutCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
 
         Path a = tempDir.resolve("a.txt");
-        Files.write(a, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(a, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
 
-        Files.write(a, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(a, "v2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
         ExecuteResult secondCommit = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
         assertThat(secondCommit.getExitCode()).isEqualTo(0);
@@ -112,7 +112,7 @@ class CheckoutCommandTest {
     void checkout_toCurrentHead_noChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "only");
 

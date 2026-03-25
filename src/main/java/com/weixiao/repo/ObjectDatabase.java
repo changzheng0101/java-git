@@ -161,16 +161,12 @@ public final class ObjectDatabase {
      * 根据类型将 body 解析为 Commit、Tree 或 Blob。
      */
     private static GitObject parseObject(String type, byte[] body) throws IOException {
-        switch (type) {
-            case "commit":
-                return Commit.fromBytes(body);
-            case "tree":
-                return Tree.fromBytes(body);
-            case "blob":
-                return new Blob(body);
-            default:
-                throw new IOException("unknown object type: " + type);
-        }
+        return switch (type) {
+            case "commit" -> Commit.fromBytes(body);
+            case "tree" -> Tree.fromBytes(body);
+            case "blob" -> new Blob(body);
+            default -> throw new IOException("unknown object type: " + type);
+        };
     }
 
     /**
@@ -197,7 +193,7 @@ public final class ObjectDatabase {
         List<String> oids = new ArrayList<>();
         if (prefix.length() == 1) {
             try (Stream<Path> subdirs = Files.list(objectsDir)) {
-                subdirs.filter(p -> Files.isDirectory(p))
+                subdirs.filter(Files::isDirectory)
                         .filter(p -> p.getFileName().toString().startsWith(prefix))
                         .forEach(subdir -> collectOidsInDir(oids, subdir, ""));
             }
@@ -214,7 +210,7 @@ public final class ObjectDatabase {
 
     private void collectOidsInDir(List<String> oids, Path subdir, String filenamePrefix) {
         try (Stream<Path> files = Files.list(subdir)) {
-            files.filter(p -> Files.isRegularFile(p))
+            files.filter(Files::isRegularFile)
                     .map(p -> p.getFileName().toString())
                     .filter(name -> name.startsWith(filenamePrefix))
                     .map(name -> subdir.getFileName().toString() + name)

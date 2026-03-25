@@ -36,9 +36,9 @@ class DiffCommandTest {
     void diff_singleFileContentChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("hello.txt");
-        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "hello.txt");
-        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v2");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -53,11 +53,11 @@ class DiffCommandTest {
     @DisplayName("无参数：多文件内容改变时显示多个 diff 块")
     void diff_multipleFilesContentChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("a.txt"), "a1".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("b.txt"), "b1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("a.txt"), "a1");
+        Files.writeString(tempDir.resolve("b.txt"), "b1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt", "b.txt");
-        Files.write(tempDir.resolve("a.txt"), "a2".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("b.txt"), "b2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("a.txt"), "a2");
+        Files.writeString(tempDir.resolve("b.txt"), "b2");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -74,7 +74,7 @@ class DiffCommandTest {
     void diff_singleFileModeChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test");
-        Files.write(file, "x".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "x");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test");
         Set<PosixFilePermission> perms = PosixFilePermissions.fromString("rwxr-xr-x");
         Files.setPosixFilePermissions(file, perms);
@@ -92,8 +92,8 @@ class DiffCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path f1 = tempDir.resolve("f1");
         Path f2 = tempDir.resolve("f2");
-        Files.write(f1, "a".getBytes(StandardCharsets.UTF_8));
-        Files.write(f2, "b".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f1, "a");
+        Files.writeString(f2, "b");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f1", "f2");
         Files.setPosixFilePermissions(f1, PosixFilePermissions.fromString("rwxr-xr-x"));
         Files.setPosixFilePermissions(f2, PosixFilePermissions.fromString("rwxr-xr-x"));
@@ -110,9 +110,9 @@ class DiffCommandTest {
     void diff_modeAndContentChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("both.txt");
-        Files.write(file, "old".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "old");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "both.txt");
-        Files.write(file, "new".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "new");
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
@@ -129,7 +129,7 @@ class DiffCommandTest {
     void diff_deletedFile(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("deleted.txt");
-        Files.write(file, "a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "a");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "deleted.txt");
         Files.delete(file);
 
@@ -145,10 +145,10 @@ class DiffCommandTest {
     @DisplayName("--cached：单文件内容改变时显示 HEAD vs index diff")
     void diff_cached_singleFileContentChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("file.txt"), "contents".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("file.txt"), "contents");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first commit");
-        Files.write(tempDir.resolve("file.txt"), "changed".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("file.txt"), "changed");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--cached");
@@ -162,12 +162,12 @@ class DiffCommandTest {
     @DisplayName("--cached：多文件内容改变时显示多个 diff")
     void diff_cached_multipleFilesContentChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("x.txt"), "x1".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("y.txt"), "y1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("x.txt"), "x1");
+        Files.writeString(tempDir.resolve("y.txt"), "y1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", ".");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "init");
-        Files.write(tempDir.resolve("x.txt"), "x2".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("y.txt"), "y2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("x.txt"), "x2");
+        Files.writeString(tempDir.resolve("y.txt"), "y2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", ".");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--cached");
@@ -185,7 +185,7 @@ class DiffCommandTest {
     void diff_cached_singleFileModeChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("exec");
-        Files.write(file, "data".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "data");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "exec");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "init");
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
@@ -203,10 +203,10 @@ class DiffCommandTest {
     void diff_cached_modeAndContentChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("both.txt");
-        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "both.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "init");
-        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v2");
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "both.txt");
 
@@ -223,10 +223,10 @@ class DiffCommandTest {
     @DisplayName("--cached：新增文件时显示 new file mode 与 --- /dev/null")
     void diff_cached_addedFile(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("file.txt"), "contents".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("file.txt"), "contents");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
-        Files.write(tempDir.resolve("another.txt"), "hello".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("another.txt"), "hello");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "another.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--cached");
@@ -241,10 +241,10 @@ class DiffCommandTest {
     @DisplayName("--staged 与 --cached 行为一致")
     void diff_staged_sameAsCached(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("f.txt"), "a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("f.txt"), "a");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "init");
-        Files.write(tempDir.resolve("f.txt"), "b".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("f.txt"), "b");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
 
         ExecuteResult cached = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--cached");
@@ -259,9 +259,9 @@ class DiffCommandTest {
     void diff_noColor_noAnsiCodes(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("x.txt");
-        Files.write(file, "a".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "a");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "x.txt");
-        Files.write(file, "b".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "b");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--no-color");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -274,7 +274,7 @@ class DiffCommandTest {
     @DisplayName("无变更时 diff 无输出")
     void diff_noChanges_emptyOutput(@TempDir Path tempDir) throws Exception {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("f.txt"), "x".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("f.txt"), "x");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
@@ -287,9 +287,9 @@ class DiffCommandTest {
     void diff_hunk_singleChange(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "line1\nline2\nline3\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\nline3\nline4\nline5");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "line1\nline2\nchanged\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\nchanged\nline4\nline5");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -324,9 +324,9 @@ class DiffCommandTest {
             newContent.append("line").append(i).append("\n");
         }
 
-        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, oldContent.toString());
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, newContent.toString());
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -370,9 +370,9 @@ class DiffCommandTest {
             newContent.append("line").append(i).append("\n");
         }
 
-        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, oldContent.toString());
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, newContent.toString());
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -407,9 +407,9 @@ class DiffCommandTest {
         newContent.append("new2\n");
 
 
-        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, oldContent.toString());
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, newContent.toString());
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -436,9 +436,9 @@ class DiffCommandTest {
             newContent.append("context").append(i).append("\n");
         }
 
-        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, oldContent.toString());
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, newContent.toString());
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -466,9 +466,9 @@ class DiffCommandTest {
     void diff_hunk_changeAtStart(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "old1\nline2\nline3\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "old1\nline2\nline3\nline4\nline5");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "new1\nline2\nline3\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "new1\nline2\nline3\nline4\nline5");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -483,9 +483,9 @@ class DiffCommandTest {
     void diff_hunk_changeAtEnd(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "line1\nline2\nline3\nold4".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\nline3\nold4");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "line1\nline2\nline3\nnew4".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\nline3\nnew4");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -500,9 +500,9 @@ class DiffCommandTest {
     void diff_hunk_deleteOnly(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "line1\nline2\ndelete\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\ndelete\nline4\nline5");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "line1\nline2\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\nline4\nline5");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -516,9 +516,9 @@ class DiffCommandTest {
     void diff_hunk_insertOnly(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "line1\nline2\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\nline4\nline5");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "line1\nline2\ninsert\nline4\nline5".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "line1\nline2\ninsert\nline4\nline5");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -545,9 +545,9 @@ class DiffCommandTest {
             }
         }
 
-        Files.write(file, oldContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, oldContent.toString());
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "large.txt");
-        Files.write(file, newContent.toString().getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, newContent.toString());
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -574,9 +574,9 @@ class DiffCommandTest {
     void diff_hunk_correctLineNumberFormat(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "a\nb\nc\nd\ne".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "a\nb\nc\nd\ne");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "a\nb\nx\nd\ne".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "a\nb\nx\nd\ne");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -603,17 +603,17 @@ class DiffCommandTest {
         //   B(master=2)   C(topic=3)
         JIT.execute("-C", tempDir.toString(), "init");
         Path f = tempDir.resolve("f.txt");
-        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
 
-        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
-        Files.write(f, "3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 

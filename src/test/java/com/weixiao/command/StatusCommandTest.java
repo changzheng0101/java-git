@@ -43,7 +43,7 @@ class StatusCommandTest {
     @DisplayName("有未跟踪文件时 status 列出 Untracked files")
     void status_untrackedFile_listed(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("untracked.txt"), "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("untracked.txt"), "content");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -55,7 +55,7 @@ class StatusCommandTest {
     @DisplayName("已 add 的文件不再出现在 Untracked 中，但会显示为 new file (added)")
     void status_afterAdd_noUntracked(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("staged.txt"), "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("staged.txt"), "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "staged.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
@@ -71,7 +71,7 @@ class StatusCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path nested = tempDir.resolve("a").resolve("b");
         Files.createDirectories(nested);
-        Files.write(nested.resolve("nested.txt"), "nested".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(nested.resolve("nested.txt"), "nested");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -84,7 +84,7 @@ class StatusCommandTest {
     @DisplayName("--porcelain 模式输出机器可读格式 ?? <path>")
     void status_porcelain_untrackedFile(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
-        Files.write(tempDir.resolve("untracked.txt"), "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(tempDir.resolve("untracked.txt"), "content");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -109,8 +109,8 @@ class StatusCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path nested = tempDir.resolve("dir1").resolve("dir2");
         Files.createDirectories(nested);
-        Files.write(nested.resolve("file.txt"), "content".getBytes(StandardCharsets.UTF_8));
-        Files.write(tempDir.resolve("root.txt"), "root".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(nested.resolve("file.txt"), "content");
+        Files.writeString(tempDir.resolve("root.txt"), "root");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -129,8 +129,8 @@ class StatusCommandTest {
         JIT.execute("-C", tempDir.toString(), "init");
         Path dir1 = tempDir.resolve("dir1");
         Files.createDirectories(dir1);
-        Files.write(dir1.resolve("tracked.txt"), "tracked".getBytes(StandardCharsets.UTF_8));
-        Files.write(dir1.resolve("untracked.txt"), "untracked".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(dir1.resolve("tracked.txt"), "tracked");
+        Files.writeString(dir1.resolve("untracked.txt"), "untracked");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "dir1/tracked.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
@@ -162,9 +162,9 @@ class StatusCommandTest {
     void status_modifiedFile_detected(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.write(file, "original".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "original");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
-        Files.write(file, "modified".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "modified");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -177,10 +177,10 @@ class StatusCommandTest {
     void status_porcelain_modifiedFile(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("file.txt");
-        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "init commit");
-        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v2");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -192,12 +192,12 @@ class StatusCommandTest {
     void status_modifiedAndUntracked_bothShown(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path modifiedFile = tempDir.resolve("modified.txt");
-        Files.write(modifiedFile, "original".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(modifiedFile, "original");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "modified.txt");
-        Files.write(modifiedFile, "changed".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(modifiedFile, "changed");
 
         Path untrackedFile = tempDir.resolve("untracked.txt");
-        Files.write(untrackedFile, "new".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(untrackedFile, "new");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -212,9 +212,9 @@ class StatusCommandTest {
     void status_sizeChanged_detectedAsModified(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("file.txt");
-        Files.write(file, "short".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "short");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
-        Files.write(file, "much longer content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "much longer content");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -226,7 +226,7 @@ class StatusCommandTest {
     void status_sameTimestamp_skipsContentCheck(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("file.txt");
-        Files.write(file, "content1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "Initial commit");
 
@@ -245,7 +245,7 @@ class StatusCommandTest {
     void status_deletedFile_detected(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("deleted.txt");
-        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "deleted.txt");
         Files.delete(file);
 
@@ -260,7 +260,7 @@ class StatusCommandTest {
     void status_porcelain_deletedFile(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("file.txt");
-        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "file.txt");
         Files.delete(file);
 
@@ -276,19 +276,19 @@ class StatusCommandTest {
 
         // Modified
         Path modifiedFile = tempDir.resolve("modified.txt");
-        Files.write(modifiedFile, "original".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(modifiedFile, "original");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "modified.txt");
-        Files.write(modifiedFile, "changed".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(modifiedFile, "changed");
 
         // Deleted
         Path deletedFile = tempDir.resolve("deleted.txt");
-        Files.write(deletedFile, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(deletedFile, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "deleted.txt");
         Files.delete(deletedFile);
 
         // Untracked
         Path untrackedFile = tempDir.resolve("untracked.txt");
-        Files.write(untrackedFile, "new".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(untrackedFile, "new");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -304,7 +304,7 @@ class StatusCommandTest {
     void status_addedFile_listed(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("new.txt");
-        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "new.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
@@ -318,7 +318,7 @@ class StatusCommandTest {
     void status_porcelain_addedFile(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("new.txt");
-        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "new.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
@@ -331,7 +331,7 @@ class StatusCommandTest {
     void status_afterCommit_noAdded(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("committed.txt");
-        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "committed.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "Initial commit");
 
@@ -347,10 +347,10 @@ class StatusCommandTest {
     void status_indexModified_staged(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("a.txt");
-        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
-        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "a.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
@@ -365,10 +365,10 @@ class StatusCommandTest {
     void status_porcelain_indexModified(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("f.txt");
-        Files.write(file, "v1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
-        Files.write(file, "v2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "v2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
@@ -381,7 +381,7 @@ class StatusCommandTest {
     void status_indexDeleted_staged(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("rm.txt");
-        Files.write(file, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "rm.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "add rm.txt");
         Repository repo = Repository.find(tempDir);
@@ -401,7 +401,7 @@ class StatusCommandTest {
     void status_porcelain_indexDeleted(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("d.txt");
-        Files.write(file, "x".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(file, "x");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "d.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "add d");
         Repository repo = Repository.find(tempDir);
@@ -443,27 +443,27 @@ class StatusCommandTest {
         //
         // 先创建一个文件并提交
         Path committedFile = tempDir.resolve("committed.txt");
-        Files.write(committedFile, "original".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(committedFile, "original");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "committed.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "Initial commit");
 
         // Added: 新文件添加到 index
         Path addedFile = tempDir.resolve("added.txt");
-        Files.write(addedFile, "new".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(addedFile, "new");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "added.txt");
 
         // Modified: 已提交的文件被修改
-        Files.write(committedFile, "modified".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(committedFile, "modified");
 
         // Deleted: 已提交的文件被删除 index中有 workspace没有
         Path deletedFile = tempDir.resolve("deleted.txt");
-        Files.write(deletedFile, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(deletedFile, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "deleted.txt");
         Files.delete(deletedFile);
 
         // Untracked: 新文件未添加到 index
         Path untrackedFile = tempDir.resolve("untracked.txt");
-        Files.write(untrackedFile, "untracked".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(untrackedFile, "untracked");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -491,27 +491,27 @@ class StatusCommandTest {
         //
         // 先创建一个文件并提交
         Path committedFile = tempDir.resolve("committed.txt");
-        Files.write(committedFile, "original".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(committedFile, "original");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "committed.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "Initial commit");
 
         // Added
         Path addedFile = tempDir.resolve("added.txt");
-        Files.write(addedFile, "new".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(addedFile, "new");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "added.txt");
 
         // Modified
-        Files.write(committedFile, "modified".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(committedFile, "modified");
 
         // Deleted index中有 workspace中没有
         Path deletedFile = tempDir.resolve("deleted.txt");
-        Files.write(deletedFile, "content".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(deletedFile, "content");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "deleted.txt");
         Files.delete(deletedFile);
 
         // Untracked
         Path untrackedFile = tempDir.resolve("untracked.txt");
-        Files.write(untrackedFile, "untracked".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(untrackedFile, "untracked");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -680,19 +680,19 @@ class StatusCommandTest {
         Path f = tempDir.resolve("f.txt");
 
         // A: f.txt=1
-        Files.write(f, "1".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "1");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
 
         // B(master): f.txt=2
-        Files.write(f, "2".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "2");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
 
         // C(topic): f.txt=3
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
-        Files.write(f, "3".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(f, "3");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
 
