@@ -1,14 +1,13 @@
 import com.google.common.collect.Iterables;
 
-import java.io.IOException;
-
 
 /**
  * @author changzheng
- * @date 2026年03月03日 14:29
+ * &#064;date  2026年03月03日 14:29
  */
+@SuppressWarnings("DataFlowIssue")
 public class Test {
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         System.out.println(Iterables.isEmpty(null));
     }
 }

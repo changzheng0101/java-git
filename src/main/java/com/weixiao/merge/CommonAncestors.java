@@ -4,7 +4,6 @@ import com.weixiao.obj.Commit;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 
-import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,7 +27,7 @@ public final class CommonAncestors {
      * 递归求两个提交的 Best Common Ancestor（Recursive Lowest Common Ancestor）。
      * 先从 X/Y 向上回溯，使用 parent1/parent2/result/stale 标记共同祖先候选，再过滤掉是其它候选祖先的提交。
      */
-    public static String findBestCommonAncestor(String oid1, String oid2) throws IOException {
+    public static String findBestCommonAncestor(String oid1, String oid2) {
         if (oid1.equals(oid2)) {
             return oid1;
         }

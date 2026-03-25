@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -391,7 +390,6 @@ class DiffCommandTest {
 
         StringBuilder oldContent = new StringBuilder();
         StringBuilder newContent = new StringBuilder();
-        StringBuilder shouldContainText = new StringBuilder();
         for (int i = 0; i < CONTEXT_LINES + 1; i++) {
             oldContent.append("line").append(i).append("\n");
             newContent.append("line").append(i).append("\n");
@@ -399,7 +397,6 @@ class DiffCommandTest {
         oldContent.append("old1\n");
         newContent.append("new1\n");
         for (int i = CONTEXT_LINES + 2; i < CONTEXT_LINES + 2 + (2 * CONTEXT_LINES - 1); i++) {  // 只有 2 行相同内容（小于 6）
-            shouldContainText.append("line").append(i).append("\n");
             oldContent.append("line").append(i).append("\n");
             newContent.append("line").append(i).append("\n");
         }

@@ -43,7 +43,7 @@ public final class RevList {
         /**
          * 需要输出
          */
-        ADDED
+        @SuppressWarnings("unused") ADDED
     }
 
     /**
@@ -193,10 +193,10 @@ public final class RevList {
     }
 
     /**
-     * 为 commit 打上标记；若该 commit 已有此标记则返回 false。
+     * 为 commit 打上标记
      */
-    public static boolean mark(String oid, CommitFlag flag, Map<String, Set<CommitFlag>> flags) {
-        return flags.computeIfAbsent(oid, k -> new HashSet<>()).add(flag);
+    public static void mark(String oid, CommitFlag flag, Map<String, Set<CommitFlag>> flags) {
+        flags.computeIfAbsent(oid, k -> new HashSet<>()).add(flag);
     }
 
     /**

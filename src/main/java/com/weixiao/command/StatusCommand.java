@@ -46,6 +46,7 @@ public class StatusCommand extends BaseCommand {
         CONFLICT_LONG_STATUS.put(CONFLICT_UA, "added by them");
     }
 
+    @SuppressWarnings("unused")
     @Option(names = {"--porcelain"}, description = "以机器可读格式输出（每行一个文件，格式：?? <path> 或  M <path>）")
     private boolean porcelain;
 
@@ -81,7 +82,7 @@ public class StatusCommand extends BaseCommand {
                 allPaths.addAll(workspaceModified);
                 allPaths.addAll(workspaceDeleted);
                 allPaths.addAll(workspaceUntracked);
-                List<String> sortedPaths = allPaths.stream().sorted().collect(Collectors.toList());
+                List<String> sortedPaths = allPaths.stream().sorted().toList();
                 for (String p : sortedPaths) {
                     String line = formatPorcelainLine(
                             p,
@@ -118,7 +119,11 @@ public class StatusCommand extends BaseCommand {
                         linesWithPrefix("  deleted:    ", indexDeleted)
                 );
                 // Unmerged paths
-                printSection("Unmerged paths:", conflictLongLines(conflicts));
+                Set<String> conflictLines = conflicts.entrySet().stream()
+                        .map(e -> CONFLICT_LONG_STATUS.getOrDefault(conflictStageKey(e.getValue()), "both modified")
+                                + ":   " + e.getKey())
+                        .collect(Collectors.toSet());
+                printSection("Unmerged paths:", linesWithPrefix("  ", conflictLines));
                 // Changes not staged for commit (workspace vs index)
                 printSection(
                         "Changes not staged for commit:",
@@ -187,13 +192,6 @@ public class StatusCommand extends BaseCommand {
         return paths.stream()
                 .sorted()
                 .map(p -> prefix + p)
-                .collect(Collectors.toList());
-    }
-
-    private static List<String> conflictLongLines(java.util.Map<String, Set<Integer>> conflicts) {
-        return conflicts.entrySet().stream()
-                .sorted(java.util.Map.Entry.comparingByKey())
-                .map(e -> "  " + CONFLICT_LONG_STATUS.getOrDefault(conflictStageKey(e.getValue()), "both modified") + ":   " + e.getKey())
                 .collect(Collectors.toList());
     }
 

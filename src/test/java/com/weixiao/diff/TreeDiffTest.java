@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SuppressWarnings("DataFlowIssue")
 @DisplayName("TreeDiff 测试")
 class TreeDiffTest {
 

@@ -16,6 +16,7 @@ public final class RevisionParseException extends RuntimeException {
         this.position = position;
     }
 
+    @SuppressWarnings("unused")
     public int getPosition() {
         return position;
     }

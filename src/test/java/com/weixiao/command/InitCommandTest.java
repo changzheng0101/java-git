@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -49,7 +48,7 @@ class InitCommandTest {
 
         Path headFile = tempDir.resolve(".git").resolve("HEAD");
         assertThat(headFile).exists();
-        String headContent = new String(Files.readAllBytes(headFile), StandardCharsets.UTF_8);
+        String headContent = Files.readString(headFile);
         assertThat(headContent).isEqualTo("ref: refs/heads/master");
     }
 

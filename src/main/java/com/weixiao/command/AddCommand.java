@@ -33,6 +33,7 @@ public class AddCommand extends BaseCommand {
     /**
      * 要添加的路径（文件或目录），可多个。
      */
+    @SuppressWarnings({"unused", "MismatchedQueryAndUpdateOfCollection"})
     @Parameters(index = "0", arity = "1..*", paramLabel = "PATH", description = "要添加的文件或目录路径（可多个）")
     private List<Path> paths;
 
@@ -56,7 +57,7 @@ public class AddCommand extends BaseCommand {
             String pathsStr = get("paths");
             List<Path> pathList = pathsStr == null || pathsStr.isEmpty()
                     ? Collections.emptyList()
-                    : Arrays.stream(pathsStr.split(PATHS_SEP)).map(Paths::get).collect(Collectors.toList());
+                    : Arrays.stream(pathsStr.split(PATHS_SEP)).map(Paths::get).toList();
             Path start = getStartPath();
             for (Path p : pathList) {
                 Path resolved = start.resolve(p).normalize();

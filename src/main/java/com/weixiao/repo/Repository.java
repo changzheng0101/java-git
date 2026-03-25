@@ -43,19 +43,19 @@ public final class Repository {
     /**
      * 对象库，用于 store/load blob、tree、commit
      */
-    private ObjectDatabase database;
+    private final ObjectDatabase database;
     /**
      * 引用，用于 readHead、updateMaster
      */
-    private Refs refs;
+    private final Refs refs;
     /**
      * 工作区，用于 listFiles、readFile
      */
-    private Workspace workspace;
+    private final Workspace workspace;
     /**
      * 暂存区，用于 add/commit
      */
-    private Index index;
+    private final Index index;
 
     /**
      * 单例构造，初始时各属性为 null；通过 {@link #find(Path)} 查找成功后会被 {@link #init(Path)} 填充。

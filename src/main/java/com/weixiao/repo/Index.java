@@ -299,6 +299,7 @@ public final class Index {
     /**
      * 清空暂存区所有条目（不写回文件），用于 checkout 等场景重置 index。
      */
+    @SuppressWarnings("unused")
     public void clear() {
         entries.clear();
         log.debug("index cleared");
@@ -341,6 +342,7 @@ public final class Index {
     /**
      * 文件是否被 index 跟踪（任意 stage 0..3 只要存在一条即返回 true）。
      */
+    @SuppressWarnings("unused")
     public boolean trackedFile(String path) {
         for (int stage = 0; stage <= 3; stage++) {
             if (getEntryForPath(path, stage) != null) {

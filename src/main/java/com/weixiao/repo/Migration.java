@@ -37,7 +37,7 @@ public final class Migration {
     private final Set<String> mkdirs = new HashSet<>();
 
 
-    private List<DiffEntry> changes;
+    private final List<DiffEntry> changes;
     private List<DiffEntry> deletes = new ArrayList<>();
     private List<DiffEntry> creates = new ArrayList<>();
     private List<DiffEntry> modifies = new ArrayList<>();
@@ -78,7 +78,7 @@ public final class Migration {
      * 删除类变更：将对应文件的全部父目录加入 rmdirs，作为后续可删除的空目录候选。
      * 创建与修改：将对应文件的父目录加入 mkdirs，确保写文件前目录存在。
      */
-    public void planChanges() throws IOException {
+    public void planChanges() {
 
         rmdirs.clear();
         mkdirs.clear();

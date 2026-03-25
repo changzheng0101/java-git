@@ -11,12 +11,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SuppressWarnings("DataFlowIssue")
 @DisplayName("BranchCommand 测试")
 class BranchCommandTest {
 
@@ -24,11 +24,11 @@ class BranchCommandTest {
 
     /**
      * 在给定目录创建仓库并做一次 commit，便于 branch 测试。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *   master: A   (A 为首个提交 "first")
-     *
+     * <p>
      * - init 后创建 f.txt 并提交 first；
      * - HEAD -> master，master -> A。
      */
@@ -50,7 +50,7 @@ class BranchCommandTest {
 
     @Test
     @DisplayName("无 commit 时 branch 失败并提示 Not a valid object name")
-    void branch_noCommit_fails(@TempDir Path tempDir) throws Exception {
+    void branch_noCommit_fails(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "foo");
         assertThat(result.getExitCode()).isNotEqualTo(0);

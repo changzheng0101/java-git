@@ -2,6 +2,7 @@ package com.weixiao.obj;
 
 import com.google.common.collect.Lists;
 import com.weixiao.utils.HexUtils;
+import com.weixiao.utils.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,7 +43,7 @@ public final class Tree implements GitObject {
         List<TreeEntry> entries = Lists.newArrayList();
         int pos = 0;
         while (pos < body.length) {
-            int nul = indexOf(body, (byte) 0, pos);
+            int nul = ArrayUtils.indexOf(body, (byte) 0, pos);
             if (nul < 0 || nul + 1 + 20 > body.length) {
                 throw new IllegalArgumentException("invalid tree body: truncated entry");
             }
@@ -60,15 +61,6 @@ public final class Tree implements GitObject {
             pos = nul + 1 + 20;
         }
         return new Tree(entries);
-    }
-
-    private static int indexOf(byte[] a, byte b, int from) {
-        for (int i = from; i < a.length; i++) {
-            if (a[i] == b) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     /**

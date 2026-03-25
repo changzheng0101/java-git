@@ -12,12 +12,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SuppressWarnings("DataFlowIssue")
 @DisplayName("CheckoutCommand 测试")
 class CheckoutCommandTest {
 
@@ -25,11 +25,11 @@ class CheckoutCommandTest {
 
     /**
      * 在给定目录创建仓库并做一次 commit，便于 checkout/branch 测试。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *   master: A  (A 的提交消息由参数 message 决定)
-     *
+     * <p>
      * - init 后写入 f.txt="v1"，add 并 commit -m message；
      * - HEAD -> master，master -> A，返回 A 的 oid。
      */
@@ -47,7 +47,7 @@ class CheckoutCommandTest {
 
     private static String readHeadFileRaw(Path tempDir) throws Exception {
         Path head = tempDir.resolve(".git").resolve("HEAD");
-        return new String(Files.readAllBytes(head), StandardCharsets.UTF_8).trim();
+        return Files.readString(head).trim();
     }
 
     @Test
@@ -60,13 +60,25 @@ class CheckoutCommandTest {
 
     @Test
     @DisplayName("无效 ref 时 checkout 失败并提示 fatal")
-    void checkout_invalidRef_fails(@TempDir Path tempDir) throws Exception {
+    void checkout_invalidRef_fails(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "nonexistent-branch");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("fatal:");
     }
 
+    /**
+     * 文本示意图：
+     * <p>
+     *   master:  A --- B
+     *             ^     ^
+     *             |     |
+     *          "first" "second"
+     * <p>
+     * - 当前 HEAD 在 B（a.txt="v2"）；
+     * - find parent(B)=A 作为 firstCommitOid；
+     * - checkout firstCommitOid 后，HEAD 应指向 A，工作区 a.txt 回到 "v1"。
+     */
     @Test
     @DisplayName("已有两个 commit 时 checkout 到前一个 commit，工作区和 HEAD 变为目标 commit 状态")
     void checkout_toPreviousCommit_updatesWorkspaceAndHead(@TempDir Path tempDir) throws Exception {
@@ -82,18 +94,7 @@ class CheckoutCommandTest {
         ExecuteResult secondCommit = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
         assertThat(secondCommit.getExitCode()).isEqualTo(0);
 
-        /**
-         * 文本示意图：
-         *
-         *   master:  A --- B
-         *             ^     ^
-         *             |     |
-         *          "first" "second"
-         *
-         * - 当前 HEAD 在 B（a.txt="v2"）；
-         * - find parent(B)=A 作为 firstCommitOid；
-         * - checkout firstCommitOid 后，HEAD 应指向 A，工作区 a.txt 回到 "v1"。
-         */
+
         Repository repo = Repository.find(tempDir);
         String headAfterSecond = repo.getRefs().readHead();
         GitObject headObj = repo.getDatabase().load(headAfterSecond);
@@ -104,7 +105,7 @@ class CheckoutCommandTest {
 
         repo = Repository.find(tempDir);
         assertThat(repo.getRefs().readHead()).isEqualTo(firstCommitOid);
-        assertThat(new String(Files.readAllBytes(a), StandardCharsets.UTF_8)).isEqualTo("v1");
+        assertThat(Files.readString(a)).isEqualTo("v1");
     }
 
     @Test

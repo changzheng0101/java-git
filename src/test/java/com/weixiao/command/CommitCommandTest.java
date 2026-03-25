@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -37,7 +36,7 @@ class CommitCommandTest {
      */
     @Test
     @DisplayName("index 为空时 commit 失败并提示 no changes added")
-    void commit_emptyIndex_fails(@TempDir Path tempDir) throws Exception {
+    void commit_emptyIndex_fails(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "msg");
         assertThat(result.getExitCode()).isNotEqualTo(0);
@@ -71,20 +70,20 @@ class CommitCommandTest {
 
     /**
      * 在嵌套目录结构中 add 后再 commit，应成功创建包含子目录的 Tree（从 index 构建）。
-     *
+     * <p>
      * 文本示意图（工作区路径结构）：
-     *
+     * <p>
      *   工作区：
      *     dir1/
      *       file1.txt      ("content1")
      *       subdir/
      *         file2.txt    ("content2")
      *     root.txt         ("root content")
-     *
+     * <p>
      * 操作：
      *   - jit add dir1 root.txt
      *   - jit commit -m "nested commit"
-     *
+     * <p>
      * 期望：
      *   - 从 index 构建出的树包含一层目录 dir1 以及其子目录 subdir；
      *   - 提交对象存在于对象库中，HEAD 指向该 commit。
@@ -122,20 +121,20 @@ class CommitCommandTest {
 
     /**
      * 在多层嵌套目录中 add 后再 commit，验证从 index 构建的 tree 正确。
-     *
+     * <p>
      * 文本示意图（工作区路径结构）：
-     *
+     * <p>
      *   工作区：
      *     a/
      *       b/
      *         c/
      *           d/
      *             file.txt  ("deep content")
-     *
+     * <p>
      * 操作：
      *   - jit add a
      *   - jit commit -m "deep nested"
-     *
+     * <p>
      * 期望：
      *   - 从 index 构建出的树包含 a/b/c/d 四级目录；
      *   - 提交写入对象库，HEAD 指向新 commit。

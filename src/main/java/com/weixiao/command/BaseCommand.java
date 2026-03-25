@@ -19,6 +19,7 @@ import java.util.Map;
 @Command
 public abstract class BaseCommand implements Runnable, CommandLine.IExitCodeGenerator {
 
+    @SuppressWarnings("unused")
     @picocli.CommandLine.ParentCommand
     protected Jit jit;
 

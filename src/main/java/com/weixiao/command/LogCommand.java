@@ -3,7 +3,6 @@ package com.weixiao.command;
 import com.google.common.base.Strings;
 import com.weixiao.obj.Commit;
 import com.weixiao.repo.ObjectDatabase;
-import com.weixiao.repo.Refs;
 import com.weixiao.repo.RevList;
 import com.weixiao.repo.Repository;
 import com.weixiao.revision.RevisionParseException;
@@ -14,7 +13,6 @@ import picocli.CommandLine.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,12 +26,15 @@ public class LogCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(LogCommand.class);
 
+    @SuppressWarnings("unused")
     @Option(names = {"--abbrev-commit"}, description = "使用缩写的提交 ID（默认 7 位）")
     private boolean abbrevCommit;
 
+    @SuppressWarnings("unused")
     @Option(names = {"--no-abbrev-commit"}, description = "使用完整的 40 位提交 ID")
     private boolean noAbbrevCommit;
 
+    @SuppressWarnings("unused")
     @Option(names = {"--oneline"}, description = "每个提交一行：<abbrev-commit> <title line>")
     private boolean oneline;
 
@@ -43,6 +44,7 @@ public class LogCommand extends BaseCommand {
      * 多个Revision
      * A..B（仅显示在 B 可达且 A 不可达的提交）
      */
+    @SuppressWarnings("unused")
     @Parameters(index = "0", arity = "0..1", paramLabel = "REVISION", description = "默认 HEAD；可为单个修订（分支/oid/HEAD）或 A..B")
     private List<String> revisions;
 

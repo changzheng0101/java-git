@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * jit add 命令测试：多文件添加、目录递归、非仓库失败等。
  */
+@SuppressWarnings("DataFlowIssue")
 @DisplayName("AddCommand 测试")
 class AddCommandTest {
 
@@ -97,26 +97,26 @@ class AddCommandTest {
 
     /**
      * 场景：避免 hello.txt 与 hello.txt/a.txt 同时存在于 index 中。
-     *
+     * <p>
      * 文本示意图（index 中路径演变）：
-     *
+     * <p>
      *  1) 初始：index 为空
      *       []
-     *
+     * <p>
      *  2) 工作区创建文件：
      *       hello.txt        (文件)
-     *
+     * <p>
      *     执行：jit add hello.txt
-     *
+     * <p>
      *     index：
      *       hello.txt
-     *
+     * <p>
      *  3) 删除文件并改成目录：
      *       hello.txt/       (目录)
      *       hello.txt/a.txt  (文件)
-     *
+     * <p>
      *     执行：jit add hello.txt/a.txt
-     *
+     * <p>
      *     期望最终 index：
      *       hello.txt/a.txt
      *     不再包含原来的文件条目 "hello.txt"。

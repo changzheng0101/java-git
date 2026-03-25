@@ -2,9 +2,6 @@ package com.weixiao.obj;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,7 +14,7 @@ class BlobTest {
      */
     @Test
     @DisplayName("toBytes 返回与构造一致的字节")
-    void toBytes_returnsSameData(@TempDir Path dir) {
+    void toBytes_returnsSameData() {
         byte[] data = "hello world".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         Blob blob = new Blob(data);
         assertThat(blob.getType()).isEqualTo("blob");

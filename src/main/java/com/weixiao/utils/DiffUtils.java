@@ -1,5 +1,6 @@
 package com.weixiao.utils;
 
+import lombok.Getter;
 import lombok.experimental.UtilityClass;
 
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ public class DiffUtils {
     /**
      * 单条编辑：类型 + 行内容（insert/delete 时仅一侧有内容）
      */
+    @Getter
     public static final class Edit {
         private final EditType type;
         private final String line;
@@ -42,14 +44,6 @@ public class DiffUtils {
         public Edit(EditType type, String line) {
             this.type = type;
             this.line = line != null ? line : "";
-        }
-
-        public EditType getType() {
-            return type;
-        }
-
-        public String getLine() {
-            return line;
         }
 
         /**
@@ -66,8 +60,7 @@ public class DiffUtils {
      * 将文档按行切分；若已是行列表则按字符串比较。
      */
     public static List<String> lines(Object document) {
-        if (document instanceof String) {
-            String s = (String) document;
+        if (document instanceof String s) {
             List<String> result = new ArrayList<>();
             int start = 0;
             for (int i = 0; i <= s.length(); i++) {

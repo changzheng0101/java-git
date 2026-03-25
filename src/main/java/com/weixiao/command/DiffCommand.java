@@ -37,9 +37,11 @@ public class DiffCommand extends BaseCommand {
     private static final String EMPTY_CONTENT = "";
     public static final int CONTEXT_LINES = 3; // Git 默认上下文行数
 
+    @SuppressWarnings("unused")
     @Option(names = {"--cached", "--staged"}, description = "对比 index 与 HEAD（暂存区与最近提交）")
     private boolean cached;
 
+    @SuppressWarnings("unused")
     @Option(names = {"--no-color"}, description = "关闭彩色输出")
     private boolean noColor;
 

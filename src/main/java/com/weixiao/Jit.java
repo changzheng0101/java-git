@@ -25,6 +25,7 @@ import java.nio.file.Paths;
 @Command(name = "jit", mixinStandardHelpOptions = true, description = "jit - 版本控制")
 public class Jit implements Runnable {
 
+    @SuppressWarnings("unused")
     @Option(names = {"-C", "-d", "--directory"}, paramLabel = "PATH",
             description = "以指定路径作为工作目录执行命令（默认为当前目录），子命令据此查找仓库根")
     private Path workingDirectory;

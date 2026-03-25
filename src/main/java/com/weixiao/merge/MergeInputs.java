@@ -2,12 +2,14 @@ package com.weixiao.merge;
 
 import com.weixiao.revision.Revision;
 import com.weixiao.repo.Repository;
+import lombok.Getter;
 
 import java.io.IOException;
 
 /**
  * Merge 命令输入的归一化表示：解析 HEAD 与命令参数，确定 head/merge/base 三个提交 oid。
  */
+@Getter
 public final class MergeInputs {
 
     public enum Kind {
@@ -47,20 +49,5 @@ public final class MergeInputs {
         return new MergeInputs(Kind.MERGE, headOid, mergeTipOid, baseOid);
     }
 
-    public Kind getKind() {
-        return kind;
-    }
-
-    public String getHeadOid() {
-        return headOid;
-    }
-
-    public String getMergeOid() {
-        return mergeOid;
-    }
-
-    public String getBaseOid() {
-        return baseOid;
-    }
 }
 

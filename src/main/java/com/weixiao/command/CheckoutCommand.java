@@ -21,6 +21,7 @@ public class CheckoutCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(CheckoutCommand.class);
 
+    @SuppressWarnings("unused")
     @Parameters(index = "0", arity = "1", paramLabel = "REF", description = "分支名或 commit id")
     private String ref;
 

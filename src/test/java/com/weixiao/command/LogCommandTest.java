@@ -9,12 +9,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SuppressWarnings("DataFlowIssue")
 @DisplayName("LogCommand 测试")
 class LogCommandTest {
 
@@ -22,14 +22,14 @@ class LogCommandTest {
 
     /**
      * 初始化一个简单线性历史，便于 log 测试。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *   master:  A --- B
      *             ^     ^
      *             |     |
      *          "first" "second"
-     *
+     * <p>
      * - A：写入 f.txt="v1"，add 后 commit -m "first"；
      * - B：修改 f.txt="v2"，add 后 commit -m "second"；
      * - HEAD -> master -> B。
@@ -56,7 +56,7 @@ class LogCommandTest {
 
     @Test
     @DisplayName("仓库无提交时 log 失败并提示 Not a valid object name: 'HEAD'")
-    void log_noCommit_fails(@TempDir Path tempDir) throws Exception {
+    void log_noCommit_fails(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log");
         assertThat(result.getExitCode()).isNotEqualTo(0);
@@ -151,6 +151,23 @@ class LogCommandTest {
         assertThat(result.getOutput()).contains("second").contains("first");
     }
 
+    /**
+     * 文本示意图：
+     * <p>
+     *   master:  A --- B
+     *             ^     ^
+     *             |     |
+     *          "first" "second"
+     * <p>
+     *   dev:               (从 B 分出)
+     *                       \
+     *                        C
+     *                        ^
+     *                        |
+     *                     "third"
+     * <p>
+     * - log dev 应按从新到旧输出 C、B、A（三个提交）。
+     */
     @Test
     @DisplayName("log 单 revision 显示该起点可达的提交")
     void log_singleRevision_showsReachable(@TempDir Path tempDir) throws Exception {
@@ -162,29 +179,29 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 
-        /**
-         * 文本示意图：
-         *
-         *   master:  A --- B
-         *             ^     ^
-         *             |     |
-         *          "first" "second"
-         *
-         *   dev:               (从 B 分出)
-         *                       \
-         *                        C
-         *                        ^
-         *                        |
-         *                     "third"
-         *
-         * - log dev 应按从新到旧输出 C、B、A（三个提交）。
-         */
+
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "dev", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         String out = result.getOutput();
         assertThat(out).contains("third").contains("second").contains("first");
     }
 
+    /**
+     * 文本示意图：
+     * <p>
+     *   master:  A --- B
+     *             ^     ^
+     *             |     |
+     *          "first" "second"
+     * <p>
+     *   dev:               (从 B 分出)
+     *                       \
+     *                        C ("third")
+     * <p>
+     * - master 可达：A, B
+     * - dev 可达：A, B, C
+     * - master..dev 应只包含在 dev 可达但 master 不可达的提交，即只输出 C（"third"）。
+     */
     @Test
     @DisplayName("log A..B 只显示在 B 可达且 A 不可达的提交")
     void log_dotDot_onlyCommitsInBNotInA(@TempDir Path tempDir) throws Exception {
@@ -196,22 +213,7 @@ class LogCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "third");
 
-        /**
-         * 文本示意图：
-         *
-         *   master:  A --- B
-         *             ^     ^
-         *             |     |
-         *          "first" "second"
-         *
-         *   dev:               (从 B 分出)
-         *                       \
-         *                        C ("third")
-         *
-         * - master 可达：A, B
-         * - dev 可达：A, B, C
-         * - master..dev 应只包含在 dev 可达但 master 不可达的提交，即只输出 C（"third"）。
-         */
+
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master..dev", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         String out = result.getOutput();

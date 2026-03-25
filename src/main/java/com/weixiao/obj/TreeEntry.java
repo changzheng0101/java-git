@@ -17,6 +17,7 @@ public final class TreeEntry {
     private final String name;
     private final String oid; // 40 字符 hex
 
+    @SuppressWarnings("unused")
     public boolean isRegularFile() {
         return mode.startsWith("1");
     }
@@ -44,10 +45,9 @@ public final class TreeEntry {
         if (this == obj) {
             return true;
         }
-        if (!(obj instanceof TreeEntry)) {
+        if (!(obj instanceof TreeEntry other)) {
             return false;
         }
-        TreeEntry other = (TreeEntry) obj;
         return Objects.equals(mode, other.mode)
             && Objects.equals(name, other.name)
             && Objects.equals(oid, other.oid);

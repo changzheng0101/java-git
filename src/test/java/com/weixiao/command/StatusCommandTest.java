@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -32,7 +31,7 @@ class StatusCommandTest {
 
     @Test
     @DisplayName("空仓库无文件时 status 显示 working tree clean")
-    void status_emptyRepo_showsClean(@TempDir Path tempDir) throws Exception {
+    void status_emptyRepo_showsClean(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -95,7 +94,7 @@ class StatusCommandTest {
 
     @Test
     @DisplayName("--porcelain 模式无未跟踪文件时输出为空")
-    void status_porcelain_noUntracked_emptyOutput(@TempDir Path tempDir) throws Exception {
+    void status_porcelain_noUntracked_emptyOutput(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "status", "--porcelain");

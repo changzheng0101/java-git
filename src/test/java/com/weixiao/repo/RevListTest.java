@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,7 +15,7 @@ class RevListTest {
     @Test
     @DisplayName("parseRevSpecs 解析 ^ 与 .. 语法")
     void parseRevSpecs_parsesCaretAndDotDot() {
-        RevList.RevSpecResult r1 = RevList.parseRevSpecs(Arrays.asList("topic..master"));
+        RevList.RevSpecResult r1 = RevList.parseRevSpecs(List.of("topic..master"));
         assertThat(r1.startRevisions()).containsExactly("master");
         assertThat(r1.excludeRevisions()).containsExactly("topic");
 
@@ -22,7 +23,7 @@ class RevListTest {
         assertThat(r2.startRevisions()).containsExactly("master");
         assertThat(r2.excludeRevisions()).containsExactly("topic");
 
-        RevList.RevSpecResult r3 = RevList.parseRevSpecs(Arrays.asList("master"));
+        RevList.RevSpecResult r3 = RevList.parseRevSpecs(List.of("master"));
         assertThat(r3.startRevisions()).containsExactly("master");
         assertThat(r3.excludeRevisions()).isEmpty();
 

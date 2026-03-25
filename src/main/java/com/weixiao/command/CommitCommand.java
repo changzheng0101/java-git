@@ -22,6 +22,7 @@ public class CommitCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(CommitCommand.class);
 
+    @SuppressWarnings("unused")
     @Option(names = {"-m", "--message"}, required = true, description = "提交信息")
     private String message;
 

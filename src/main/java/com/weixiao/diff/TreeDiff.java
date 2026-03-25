@@ -18,6 +18,7 @@ import java.util.Objects;
  * 参数：commitIdA、commitIdB。
  * 结果：A 无 B 有（新增）、A 有 B 无（删除）、两边都有但 hash 或 mode 不同（修改）。
  */
+@SuppressWarnings("DataFlowIssue")
 public final class TreeDiff {
 
     private final ObjectDatabase database;

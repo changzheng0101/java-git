@@ -97,7 +97,7 @@ public final class ObjectDatabase {
         }
         byte[] compressed = Files.readAllBytes(p);
         byte[] content = inflate(compressed);
-        int nul = indexOf(content, (byte) 0);
+        int nul = indexOf(content);
         if (nul < 0) {
             throw new IOException("invalid object: " + oid);
         }
@@ -281,9 +281,9 @@ public final class ObjectDatabase {
     /**
      * 在字节数组中查找第一个等于 b 的下标，未找到返回 -1。
      */
-    private static int indexOf(byte[] a, byte b) {
+    private static int indexOf(byte[] a) {
         for (int i = 0; i < a.length; i++) {
-            if (a[i] == b) {
+            if (a[i] == (byte) 0) {
                 return i;
             }
         }

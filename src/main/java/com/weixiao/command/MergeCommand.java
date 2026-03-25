@@ -22,6 +22,7 @@ public class MergeCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(MergeCommand.class);
 
+    @SuppressWarnings("unused")
     @Parameters(index = "0", paramLabel = "REV", description = "要合并的分支或修订")
     private String rev;
 

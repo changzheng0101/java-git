@@ -28,6 +28,6 @@ public final class DiffSide {
      * 该侧是否有文件（oid 非 null 表示有文件，否则为 /dev/null）。
      */
     public boolean hasFile() {
-        return oid != NULL_OID;
+        return !oid.equals(NULL_OID);
     }
 }

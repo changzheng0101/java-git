@@ -28,15 +28,19 @@ public class BranchCommand extends BaseCommand {
 
     private static final String BRANCH_NAMES_SEP = "\n";
 
+    @SuppressWarnings("unused")
     @Option(names = {"-v", "--verbose"}, description = "显示每个分支指向的提交和标题行")
     private boolean verbose;
 
+    @SuppressWarnings("unused")
     @Option(names = {"-d", "--delete"}, description = "删除分支（安全删除，当前实现需配合 --force 使用）")
     private boolean delete;
 
+    @SuppressWarnings("unused")
     @Option(names = {"--force", "-D"}, description = "强制删除分支")
     private boolean force;
 
+    @SuppressWarnings("unused")
     @Parameters(index = "0", arity = "0..*", paramLabel = "NAME", description = "分支名称（省略则列出分支）")
     private List<String> branchNames;
 
@@ -118,7 +122,7 @@ public class BranchCommand extends BaseCommand {
     /**
      * 删除一个或多个分支：当前实现只有在 force=true 时才真正删除。
      */
-    private void deleteBranches(Repository repo, List<String> names, boolean forceDelete) throws IOException {
+    private void deleteBranches(Repository repo, List<String> names, boolean forceDelete) {
         Refs refs = repo.getRefs();
         for (String name : names) {
             if (!forceDelete) {
@@ -141,7 +145,7 @@ public class BranchCommand extends BaseCommand {
      * 列出所有分支，按名字排序；当前 HEAD 所在分支前加 *。
      * 若 --verbose，则附加输出 abbrev commitId 和 message 首行。
      */
-    private void listBranches(Repository repo) throws IOException {
+    private void listBranches(Repository repo) {
         Map<String, String> namesToOid = repo.getRefs().getBranchNamesToOid();
         List<String> names = new ArrayList<>(namesToOid.keySet());
         Collections.sort(names);

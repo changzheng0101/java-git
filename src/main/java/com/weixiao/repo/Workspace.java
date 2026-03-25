@@ -85,6 +85,7 @@ public final class Workspace {
     /**
      * 读取工作区根目录下名为 name 的文件的全部字节。
      */
+    @SuppressWarnings("unused")
     public byte[] readFile(String name) throws IOException {
         return Files.readAllBytes(root.resolve(name));
     }
@@ -100,6 +101,7 @@ public final class Workspace {
      * 检查工作区根目录下名为 name 的文件是否可执行。
      * 在 Unix/Linux/macOS 上检查文件权限位，在 Windows 上检查文件扩展名。
      */
+    @SuppressWarnings("unused")
     public boolean isExecutable(String name) {
         return Files.isExecutable(root.resolve(name));
     }
@@ -109,6 +111,7 @@ public final class Workspace {
      * mode 格式：第一位为文件类型（1=regular file），后三位从文件权限读取。
      * 在 Windows 上，如果无法获取 POSIX 权限，则根据是否可执行返回默认值。
      */
+    @SuppressWarnings("unused")
     public String getFileMode(String name) throws IOException {
         Path filePath = root.resolve(name);
         return getFileMode(filePath);
@@ -191,6 +194,7 @@ public final class Workspace {
     /**
      * 工作区根目录路径。
      */
+    @SuppressWarnings("unused")
     public Path getRoot() {
         return root;
     }
@@ -275,7 +279,7 @@ public final class Workspace {
         if (Files.isDirectory(path)) {
             List<Path> children;
             try (java.util.stream.Stream<Path> stream = Files.list(path)) {
-                children = stream.collect(java.util.stream.Collectors.toList());
+                children = stream.toList();
             }
             for (Path child : children) {
                 if (GIT_DIR.equals(child.getFileName().toString())) {
@@ -307,12 +311,10 @@ public final class Workspace {
         for (String dir : rmdirsSorted) {
             Path p = root.resolve(dir);
             if (Files.exists(p) && Files.isDirectory(p)) {
-                try {
-                    if (!Files.list(p).iterator().hasNext()) {
+                try (Stream<Path> stream = Files.list(p)) {
+                    if (stream.findAny().isEmpty()) {
                         deletePath(dir);
                     }
-                } catch (IOException ignored) {
-                    // 非空则跳过
                 }
             }
         }

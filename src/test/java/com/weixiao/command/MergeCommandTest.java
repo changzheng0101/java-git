@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -40,16 +39,16 @@ class MergeCommandTest {
 
     /**
      * 初始化分支结构：
-     *
+     * <p>
      * 文本示意图（提交沿时间向下）：
-     *
+     * <p>
      *   master:  first ----> second
      *                        |
      *                        +----> (branch) dev
      *                                  |
      *                                  v
      *                                 third
-     *
+     * <p>
      * - 在 master 上依次提交 first、second；
      * - 从 second 创建分支 dev 并 checkout；
      * - 在 dev 上再提交 third。
@@ -77,7 +76,7 @@ class MergeCommandTest {
 
     @Test
     @DisplayName("无提交时 merge 失败并提示 HEAD 无效")
-    void merge_noCommit_fails(@TempDir Path tempDir) throws Exception {
+    void merge_noCommit_fails(@TempDir Path tempDir) {
         JIT.execute("-C", tempDir.toString(), "init");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "master");
         assertThat(result.getExitCode()).isNotEqualTo(0);
@@ -86,16 +85,16 @@ class MergeCommandTest {
 
     /**
      * 场景：线性历史下从 dev merge master（master 已是 dev 的祖先），无需合并与写新提交，应提示 Already up to date。
-     *
+     * <p>
      * 文本示意图（merge 前）：
-     *
+     * <p>
      *   master:  A --- B
      *                 ^
      *                 |
      *               (fork)
      *                 |
      *   dev:          B --- C
-     *
+     * <p>
      * - A=first, B=second（master 上的两个提交）；
      * - C=third，是在从 B fork 出来的 dev 上再提交一次；
      * - 在 dev 上执行 merge master：被合并的提交已是 HEAD 的祖先，应直接返回 "Already up to date."。
@@ -111,16 +110,16 @@ class MergeCommandTest {
 
     /**
      * 场景：线性历史：dev 比 master 多一个提交，在 dev 上 merge master 不应写新 commit，HEAD 不变。
-     *
+     * <p>
      * 文本示意图（merge 前）：
-     *
+     * <p>
      *   master:  A --- B
      *                 ^
      *                 |
      *               (fork)
      *                 |
      *   dev:          B --- C
-     *
+     * <p>
      * 该用例断言：
      * - 输出包含 "Already up to date."；
      * - HEAD 仍为 devTip。
@@ -184,7 +183,7 @@ class MergeCommandTest {
 
         // fast-forward 后工作区内容应与 dev tip 一致：f.txt=v3
         Path f = tempDir.resolve("f.txt");
-        String fContent = new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
+        String fContent = Files.readString(f);
         assertThat(fContent).isEqualTo("v3");
     }
 
@@ -245,27 +244,27 @@ class MergeCommandTest {
         assertThat(mergeCommit.getParentOids()).containsExactly(masterTipBeforeMerge, topicTipBeforeMerge);
 
         // 合并后工作区应同时包含两侧修改：f.txt=2，g.txt=3
-        String fContent = new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
-        String gContent = new String(Files.readAllBytes(g), StandardCharsets.UTF_8);
+        String fContent = Files.readString(f);
+        String gContent = Files.readString(g);
         assertThat(fContent).isEqualTo("2");
         assertThat(gContent).isEqualTo("3");
     }
 
     /**
      * 场景：菱形提交图，测试 findBca 在多 parent 情况下返回预期的单一 BCA。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *        A
      *       / \
      *      B   C
      *       \ /
      *        D
-     *
+     * <p>
      * - A 为根提交（无 parent）；
      * - B 和 C 都以 A 为 parent；
      * - D 是一个 merge commit，parents=[B, C]。
-     *
+     * <p>
      * 期望：
      * - findBca(B, C) = A
      * - findBca(B, D) = B
@@ -280,7 +279,7 @@ class MergeCommandTest {
         ObjectDatabase db = Repository.INSTANCE.getDatabase();
 
         // A: root commit（无 parent）
-        Commit a = new Commit("treeA", java.util.Collections.<String>emptyList(), "author", "committer", "A");
+        Commit a = new Commit("treeA", java.util.Collections.emptyList(), "author", "committer", "A");
         String aOid = db.store(a);
 
         // B: parent = A
@@ -307,9 +306,9 @@ class MergeCommandTest {
 
     /**
      * 场景：多个共同祖先时，只保留“最低”的 best common ancestor。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *        A
      *       / \
      *      B   C
@@ -317,12 +316,12 @@ class MergeCommandTest {
      *        E
      *        |
      *        F
-     *
+     * <p>
      * - A 为根；
      * - B、C 均来自 A；
      * - E 是 B 与 C 的 merge commit（parents=[B, C]）；
      * - F 基于 E 再提交一次。
-     *
+     * <p>
      * 对于 (B, F)：
      * - 共同祖先有 A 和 B；
      * - best common ancestor 应为 B（A 是 B 的祖先，应被过滤掉）。
@@ -335,7 +334,7 @@ class MergeCommandTest {
         ObjectDatabase db = Repository.INSTANCE.getDatabase();
 
         // A: root
-        Commit a = new Commit("treeA", java.util.Collections.<String>emptyList(), "author", "committer", "A");
+        Commit a = new Commit("treeA", java.util.Collections.emptyList(), "author", "committer", "A");
         String aOid = db.store(a);
 
         // B: parent = A
@@ -370,13 +369,13 @@ class MergeCommandTest {
 
     /**
      * 场景：同一文件内容冲突（A=1，master 改为 2，topic 改为 3）。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *        A(f.txt=1)
      *       /          \
      *   B(master=2)   C(topic=3)
-     *
+     * <p>
      * 在 master 上执行 merge topic 后应进入冲突态：
      * - 不写新的 merge commit（HEAD 保持在 B）；
      * - 工作区 f.txt 写入冲突标记，且包含 2 和 3；
@@ -421,7 +420,7 @@ class MergeCommandTest {
         String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
         assertThat(headAfterMerge).isEqualTo(headBeforeMerge);
 
-        String mergedContent = new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
+        String mergedContent = Files.readString(f);
         assertThat(mergedContent).contains("<<<<<<< HEAD");
         assertThat(mergedContent).contains("=======");
         assertThat(mergedContent).contains(">>>>>>> topic");
@@ -437,14 +436,14 @@ class MergeCommandTest {
 
     /**
      * 场景：目录/文件名互斥冲突（D/F conflict）。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *        A(emptyTree)
      *       /        \
      *   B(master):   C(topic):
      *   add f.txt    add f.txt/g.txt
-     *
+     * <p>
      * 在 master 上 merge topic 后：
      * - 保留 f.txt/g.txt 到工作区和 index；
      * - 冲突路径 f.txt 以 f.txt~HEAD 写入工作区（不写入 index）；
@@ -493,8 +492,8 @@ class MergeCommandTest {
         Path renamedHeadPath = tempDir.resolve("f.txt~HEAD");
         assertThat(Files.exists(rightPath)).isTrue();
         assertThat(Files.exists(renamedHeadPath)).isTrue();
-        assertThat(new String(Files.readAllBytes(rightPath), StandardCharsets.UTF_8)).isEqualTo("right");
-        assertThat(new String(Files.readAllBytes(renamedHeadPath), StandardCharsets.UTF_8)).isEqualTo("left");
+        assertThat(Files.readString(rightPath)).isEqualTo("right");
+        assertThat(Files.readString(renamedHeadPath)).isEqualTo("left");
 
         Repository.INSTANCE.getIndex().load();
         assertThat(Repository.INSTANCE.getIndex().isConflicted()).isTrue();
@@ -505,14 +504,14 @@ class MergeCommandTest {
 
     /**
      * 场景：目录/文件名互斥冲突（D/F conflict）反向用例。
-     *
+     * <p>
      * 文本示意图：
-     *
+     * <p>
      *        A(emptyTree)
      *       /        \
      *   B(master):   C(topic):
      *   add f.txt/g.txt  add f.txt
-     *
+     * <p>
      * 在 master 上 merge topic 后：
      * - 保留 f.txt/g.txt 到工作区和 index；
      * - 右侧冲突路径 f.txt 以 f.txt~topic 写入工作区（不写入 index）；
@@ -561,8 +560,8 @@ class MergeCommandTest {
         Path renamedMergePath = tempDir.resolve("f.txt~topic");
         assertThat(Files.exists(keptPath)).isTrue();
         assertThat(Files.exists(renamedMergePath)).isTrue();
-        assertThat(new String(Files.readAllBytes(keptPath), StandardCharsets.UTF_8)).isEqualTo("left-dir");
-        assertThat(new String(Files.readAllBytes(renamedMergePath), StandardCharsets.UTF_8)).isEqualTo("right-file");
+        assertThat(Files.readString(keptPath)).isEqualTo("left-dir");
+        assertThat(Files.readString(renamedMergePath)).isEqualTo("right-file");
 
         Repository.INSTANCE.getIndex().load();
         assertThat(Repository.INSTANCE.getIndex().isConflicted()).isTrue();

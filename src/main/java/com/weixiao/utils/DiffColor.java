@@ -9,6 +9,7 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class DiffColor {
 
+    @SuppressWarnings("unused")
     public static String reset() {
         return Color.reset();
     }
@@ -17,10 +18,12 @@ public class DiffColor {
         return Color.bold(s);
     }
 
+    @SuppressWarnings("unused")
     public static String red(String s) {
         return Color.red(s);
     }
 
+    @SuppressWarnings("unused")
     public static String green(String s) {
         return Color.green(s);
     }
