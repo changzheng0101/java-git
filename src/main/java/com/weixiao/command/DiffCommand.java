@@ -56,7 +56,9 @@ public class DiffCommand extends BaseCommand {
         }
     }
 
-    /** 是否使用颜色（与 Git 一致：默认在 TTY 下开启，--no-color 关闭） */
+    /**
+     * 是否使用颜色（与 Git 一致：默认在 TTY 下开启，--no-color 关闭）
+     */
     private boolean useColor() {
         if (isSet("noColor")) {
             return false;
@@ -70,9 +72,9 @@ public class DiffCommand extends BaseCommand {
             repo.getIndex().load();
             StatusResult status = repo.getStatus();
             if (isSet("cached")) {
-                diffHeadIndex(repo, status);
+                diffHeadIndex(status);
             } else {
-                diffIndexWorkspace(repo, status);
+                diffIndexWorkspace(status);
             }
         } catch (Exception e) {
             log.error("diff failed", e);
@@ -86,38 +88,27 @@ public class DiffCommand extends BaseCommand {
      * a为index对应元数据
      * b为workspace对应元数据
      */
-    private void diffIndexWorkspace(Repository repo, StatusResult status) throws IOException {
+    private void diffIndexWorkspace(StatusResult status) throws IOException {
         List<String> paths = new ArrayList<>();
         paths.addAll(status.getConflicts().keySet());
         paths.addAll(status.getWorkspaceModified());
         paths.addAll(status.getWorkspaceDeleted());
         Collections.sort(paths);
+
         for (String path : paths) {
             boolean isConflictPath = status.getConflicts().containsKey(path);
             if (isConflictPath) {
                 printConflictDiff(path);
                 continue;
             }
-            Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
-            if (indexEntry == null) continue;
-            DiffSide aDiffSide = new DiffSide(
-                    indexEntry.getPath(),
-                    indexEntry.getOid(),
-                    indexEntry.getMode(),
-                    blobContent(repo, indexEntry.getOid()));
 
-            DiffSide bDiffSide;
-            if (status.getWorkspaceDeleted().contains(path)) {
-                bDiffSide = new DiffSide(path, NULL_OID, null, EMPTY_CONTENT);
-            } else {
-                Path fullPath = repo.getRoot().resolve(path);
-                byte[] bytes = repo.getWorkspace().readFile(fullPath);
-                bDiffSide = new DiffSide(
-                        path,
-                        Repository.computeBlobOid(bytes),
-                        repo.getWorkspace().getFileMode(fullPath),
-                        new String(bytes, StandardCharsets.UTF_8));
-            }
+            Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
+            boolean deleted = status.getWorkspaceDeleted().contains(path);
+
+            DiffSide aDiffSide = new DiffSide(indexEntry.getPath(), indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));
+            DiffSide bDiffSide = deleted ?
+                    new DiffSide(path, NULL_OID, null, EMPTY_CONTENT) :
+                    fromWorkSpace(path);
 
             printDiff(aDiffSide, bDiffSide);
         }
@@ -132,18 +123,20 @@ public class DiffCommand extends BaseCommand {
      * a对应的是HEAD中的文件
      * b对应的是index中的文件
      */
-    private void diffHeadIndex(Repository repo, StatusResult status) throws IOException {
+    private void diffHeadIndex(StatusResult status) throws IOException {
         List<String> paths = new ArrayList<>();
         paths.addAll(status.getIndexAdded());
         paths.addAll(status.getIndexModified());
         paths.addAll(status.getIndexDeleted());
         Collections.sort(paths);
+
         Map<String, String> headPathToOid = new HashMap<>();
         Map<String, String> headPathToMode = new HashMap<>();
         String headCommitOid = repo.getRefs().readHead();
         if (headCommitOid != null) {
             repo.collectCommitTreeTo(headCommitOid, headPathToOid, headPathToMode);
         }
+
         for (String path : paths) {
             String headOid = headPathToOid.get(path);
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
@@ -167,6 +160,23 @@ public class DiffCommand extends BaseCommand {
         GitObject raw = repo.getDatabase().load(oid);
         if (!"blob".equals(raw.getType())) return "";
         return new String(raw.toBytes(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     *
+     * @param path 针对根目录的相对路径
+     * @return 由当前路径构建出来的DiffSide
+     */
+    private static DiffSide fromWorkSpace(String path) throws IOException {
+        Repository repo = Repository.INSTANCE;
+        Path fullPath = repo.getRoot().resolve(path);
+        byte[] bytes = repo.getWorkspace().readFile(fullPath);
+        return new DiffSide(
+                path,
+                Repository.computeBlobOid(bytes),
+                repo.getWorkspace().getFileMode(fullPath),
+                new String(bytes, StandardCharsets.UTF_8)
+        );
     }
 
 
@@ -205,7 +215,6 @@ public class DiffCommand extends BaseCommand {
             System.out.println(color ? DiffColor.bold("new mode " + bDiffSide.getMode()) : "new mode " + bDiffSide.getMode());
         }
     }
-
 
 
     /**
