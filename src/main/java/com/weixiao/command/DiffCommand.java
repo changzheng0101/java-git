@@ -2,6 +2,7 @@ package com.weixiao.command;
 
 import com.weixiao.model.DiffSide;
 import com.weixiao.obj.GitObject;
+import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
@@ -162,15 +163,14 @@ public class DiffCommand extends BaseCommand {
         paths.addAll(status.getIndexDeleted());
         Collections.sort(paths);
 
-        Map<String, String> headPathToOid = new HashMap<>();
-        Map<String, String> headPathToMode = new HashMap<>();
+        Map<String, TreeEntry> headPathToEntry = new HashMap<>();
         String headCommitOid = repo.getRefs().readHead();
         if (headCommitOid != null) {
-            repo.collectCommitTreeTo(headCommitOid, headPathToOid, headPathToMode);
+            repo.collectCommitTreeTo(headCommitOid, headPathToEntry);
         }
 
         for (String path : paths) {
-            String headOid = headPathToOid.get(path);
+            TreeEntry headEntry = headPathToEntry.get(path);
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
             boolean added = status.getIndexAdded().contains(path);
             boolean deleted = status.getIndexDeleted().contains(path);
@@ -178,7 +178,7 @@ public class DiffCommand extends BaseCommand {
             DiffSide aDiffSide, bDiffSide;
             aDiffSide = added
                     ? new DiffSide(path, NULL_OID, null, EMPTY_CONTENT)
-                    : new DiffSide(path, headOid, headPathToMode.get(path), blobContent(repo, headPathToOid.get(path)));
+                    : new DiffSide(path, headEntry.getOid(), headEntry.getMode(), blobContent(repo, headEntry.getOid()));
             bDiffSide = deleted
                     ? new DiffSide(path, NULL_OID, null, EMPTY_CONTENT)
                     : new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));

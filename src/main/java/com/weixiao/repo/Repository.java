@@ -116,11 +116,10 @@ public final class Repository {
     }
 
     /**
-     * 将指定 commit 的 tree 展开为 path -> oid 与 path -> mode，填入传入的 map（仅文件路径，不含目录）。
-     * 用于 checkout 等需要目标 tree 快照的场景。
+     * 将指定 commit 的 tree 展开为 path -> TreeEntry，填入传入的 map（仅文件路径，不含目录）。
+     * 用于 status、diff、checkout 等需要目标 tree 快照的场景。
      */
-    public void collectCommitTreeTo(String commitOid, Map<String, String> pathToOid,
-                                    Map<String, String> pathToMode) throws IOException {
+    public void collectCommitTreeTo(String commitOid, Map<String, TreeEntry> pathToEntry) throws IOException {
         GitObject obj = database.load(commitOid);
         if (!"commit".equals(obj.getType())) {
             throw new IOException("not a commit: " + commitOid);
@@ -129,9 +128,8 @@ public final class Repository {
         if (treeOid == null) {
             throw new IOException("invalid commit format: " + commitOid);
         }
-        pathToOid.clear();
-        pathToMode.clear();
-        collectTreePathToOid(treeOid, "", pathToOid, pathToMode);
+        pathToEntry.clear();
+        collectTreePathToEntry(treeOid, "", pathToEntry);
     }
 
     private static String parseCommitTreeOid(byte[] commitBody) {
@@ -145,8 +143,7 @@ public final class Repository {
         return null;
     }
 
-    private void collectTreePathToOid(String treeOid, String prefix,
-                                      Map<String, String> pathToOid, Map<String, String> pathToMode) throws IOException {
+    private void collectTreePathToEntry(String treeOid, String prefix, Map<String, TreeEntry> pathToEntry) throws IOException {
         GitObject treeRaw = database.load(treeOid);
         if (!"tree".equals(treeRaw.getType())) {
             throw new IOException("expected tree, got " + treeRaw.getType() + ": " + treeOid);
@@ -160,10 +157,9 @@ public final class Repository {
         for (TreeEntry entry : entries) {
             String path = prefix.isEmpty() ? entry.getName() : prefix + "/" + entry.getName();
             if ("40000".equals(entry.getMode())) {
-                collectTreePathToOid(entry.getOid(), path, pathToOid, pathToMode);
+                collectTreePathToEntry(entry.getOid(), path, pathToEntry);
             } else {
-                pathToOid.put(path, entry.getOid());
-                pathToMode.put(path, entry.getMode());
+                pathToEntry.put(path, entry);
             }
         }
     }

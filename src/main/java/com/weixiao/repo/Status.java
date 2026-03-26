@@ -2,6 +2,7 @@ package com.weixiao.repo;
 
 import com.weixiao.model.FileStatus;
 import com.weixiao.model.StatusResult;
+import com.weixiao.obj.TreeEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,15 +31,17 @@ public final class Status {
     public static StatusResult getStatus() throws IOException {
         Repository repo = Repository.INSTANCE;
         StatusResult result = new StatusResult();
-        Map<String, String> headPathToOid = new LinkedHashMap<>();
-        Map<String, String> headPathToMode = new LinkedHashMap<>();
-        prepareHeadTreeMaps(headPathToOid, headPathToMode);
+        Map<String, TreeEntry> headPathToEntry = new LinkedHashMap<>();
+        String headOid = repo.getRefs().readHead();
+        if (headOid != null) {
+            repo.collectCommitTreeTo(headOid, headPathToEntry);
+        }
 
         List<Index.Entry> allIndexEntries = new ArrayList<>(repo.getIndex().getEntries());
-        Set<String> stage0Paths = checkIndexEntries(allIndexEntries, headPathToOid, headPathToMode, result);
+        Set<String> stage0Paths = checkIndexEntries(allIndexEntries, headPathToEntry, result);
 
         // 检查 index delete文件， head中有 但是index删除的文件
-        collectIndexDeleted(stage0Paths, headPathToOid.keySet(), result);
+        collectIndexDeleted(stage0Paths, headPathToEntry.keySet(), result);
 
         // 检查 untracked file，head中没有，但是Workspace有
         Set<String> trackedPaths = new java.util.HashSet<>(stage0Paths);
@@ -56,14 +59,13 @@ public final class Status {
      * @return stage=0 的路径集合
      */
     private static Set<String> checkIndexEntries(List<Index.Entry> allIndexEntries,
-                                                 Map<String, String> headPathToOid,
-                                                 Map<String, String> headPathToMode,
+                                                 Map<String, TreeEntry> headPathToEntry,
                                                  StatusResult result) throws IOException {
         Set<String> stage0Paths = new java.util.HashSet<>();
         for (Index.Entry entry : allIndexEntries) {
             if (entry.getStage() == 0) {
                 stage0Paths.add(entry.getPath());
-                checkStage0Entry(entry, headPathToOid, headPathToMode, result);
+                checkStage0Entry(entry, headPathToEntry, result);
             } else {
                 result.getConflicts()
                         .computeIfAbsent(entry.getPath(), k -> new java.util.TreeSet<>())
@@ -79,8 +81,7 @@ public final class Status {
      * - HEAD 侧：ADDED / MODIFIED
      */
     private static void checkStage0Entry(Index.Entry entry,
-                                         Map<String, String> headPathToOid,
-                                         Map<String, String> headPathToMode,
+                                         Map<String, TreeEntry> headPathToEntry,
                                          StatusResult result) throws IOException {
         FileStatus workspaceStatus = checkIndexAgainstWorkspace(entry);
         if (workspaceStatus == FileStatus.MODIFIED) {
@@ -89,7 +90,7 @@ public final class Status {
             result.getWorkspaceDeleted().add(entry.getPath());
         }
 
-        FileStatus headStatus = checkIndexAgainstHeadTree(entry, headPathToOid, headPathToMode);
+        FileStatus headStatus = checkIndexAgainstHeadTree(entry, headPathToEntry);
         if (headStatus == FileStatus.ADDED) {
             result.getIndexAdded().add(entry.getPath());
         } else if (headStatus == FileStatus.MODIFIED) {
@@ -121,32 +122,15 @@ public final class Status {
      * 计算单条 index 记录（stage-0）相对 HEAD tree 的状态。
      */
     private static FileStatus checkIndexAgainstHeadTree(Index.Entry indexEntry,
-                                                        Map<String, String> headPathToOid,
-                                                        Map<String, String> headPathToMode) {
+                                                        Map<String, TreeEntry> headPathToEntry) {
         String path = indexEntry.getPath();
-        boolean inHead = headPathToOid.containsKey(path);
-        if (!inHead) {
+        TreeEntry headEntry = headPathToEntry.get(path);
+        if (headEntry == null) {
             return FileStatus.ADDED;
         }
-        String headOidForPath = headPathToOid.get(path);
-        String headMode = headPathToMode.get(path);
-        String indexMode = indexEntry.getMode();
-        boolean oidChanged = headOidForPath != null && !indexEntry.getOid().equals(headOidForPath);
-        boolean modeChanged = headMode != null && !headMode.equals(indexMode);
+        boolean oidChanged = !indexEntry.getOid().equals(headEntry.getOid());
+        boolean modeChanged = !indexEntry.getMode().equals(headEntry.getMode());
         return (oidChanged || modeChanged) ? FileStatus.MODIFIED : FileStatus.UNCHANGED;
-    }
-
-    /**
-     * 读取 HEAD 所在提交树并展开为 path->oid/mode 映射；无 HEAD 时保持为空。
-     */
-    private static void prepareHeadTreeMaps(Map<String, String> headPathToOid,
-                                            Map<String, String> headPathToMode) throws IOException {
-        Repository repo = Repository.INSTANCE;
-        String headOid = repo.getRefs().readHead();
-        if (headOid == null) {
-            return;
-        }
-        repo.collectCommitTreeTo(headOid, headPathToOid, headPathToMode);
     }
 
     /**
