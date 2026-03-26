@@ -242,6 +242,8 @@ class MergeCommandTest {
         assertThat(mergeCommit).isNotNull();
         assertThat(mergeCommit.getParentOids()).hasSize(2);
         assertThat(mergeCommit.getParentOids()).containsExactly(masterTipBeforeMerge, topicTipBeforeMerge);
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_HEAD"))).isFalse();
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_MSG"))).isFalse();
 
         // 合并后工作区应同时包含两侧修改：f.txt=2，g.txt=3
         String fContent = Files.readString(f);
@@ -410,12 +412,15 @@ class MergeCommandTest {
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
         Repository.find(tempDir);
         String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+        String topicTip = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "topic"));
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("merge conflicts detected");
         assertThat(result.getOutput()).contains("Auto-merging f.txt");
         assertThat(result.getOutput()).contains("CONFLICT (content): Merge conflict in f.txt");
+        assertThat(Files.readString(tempDir.resolve(".git").resolve("MERGE_HEAD")).trim()).isEqualTo(topicTip);
+        assertThat(Files.readString(tempDir.resolve(".git").resolve("MERGE_MSG")).trim()).isEqualTo("Merge branch 'topic'");
 
         String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
         assertThat(headAfterMerge).isEqualTo(headBeforeMerge);

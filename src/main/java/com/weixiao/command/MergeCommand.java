@@ -55,6 +55,10 @@ public class MergeCommand extends BaseCommand {
                 return;
             }
 
+            String mergeMsg = "Merge branch '" + rev + "'";
+            PendingCommit pendingCommit = new PendingCommit(repo.getGitDir());
+            pendingCommit.start(inputs.getMergeOid(), mergeMsg);
+
             MergeResolve mergeResolve = new MergeResolve(inputs, rev);
             mergeResolve.onProgress(System.out::println);
             mergeResolve.execute();
@@ -67,10 +71,10 @@ public class MergeCommand extends BaseCommand {
 
             String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());
             String author = formatAuthor();
-            String mergeMsg = "Merge branch '" + rev + "'";
             Commit mergeCommit = new Commit(treeOid, Arrays.asList(inputs.getHeadOid(), inputs.getMergeOid()), author, author, mergeMsg);
             String newCommitOid = repo.getDatabase().store(mergeCommit);
             repo.getRefs().updateCurrentBranch(newCommitOid);
+            pendingCommit.clear();
             System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(newCommitOid));
         } catch (RevisionParseException e) {
             log.warn("merge parse revision failed", e);
