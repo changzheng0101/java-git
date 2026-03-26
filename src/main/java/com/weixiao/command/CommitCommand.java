@@ -2,12 +2,14 @@ package com.weixiao.command;
 
 import com.weixiao.obj.Commit;
 import com.weixiao.repo.ObjectDatabase;
-import com.weixiao.repo.TreeBuilder;
+import com.weixiao.repo.PendingCommit;
+import com.weixiao.repo.WriteCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,7 +25,7 @@ public class CommitCommand extends BaseCommand {
     private static final Logger log = LoggerFactory.getLogger(CommitCommand.class);
 
     @SuppressWarnings("unused")
-    @Option(names = {"-m", "--message"}, required = true, description = "提交信息")
+    @Option(names = {"-m", "--message"}, description = "提交信息")
     private String message;
 
     @Override
@@ -44,28 +46,34 @@ public class CommitCommand extends BaseCommand {
 
         try {
             repo.getIndex().load();
+            // check for conflict status
+            PendingCommit pendingCommit = new PendingCommit(repo.getGitDir());
+            if (pendingCommit.inProgress()) {
+                handleConflictCommit(pendingCommit);
+                return;
+            }
+
             if (repo.getIndex().isEmpty()) {
                 log.info("commit aborted: nothing added to commit");
                 System.err.println("fatal: no changes added to commit (use \"jit add\")");
                 exitCode = 1;
                 return;
             }
-            String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());
-            log.debug("stored root tree oid={}", treeOid);
+            String msg = get("message");
+            if (msg == null || msg.isBlank()) {
+                System.err.println("fatal: commit message is required (use -m)");
+                exitCode = 1;
+                return;
+            }
 
             String parentOid = repo.getRefs().readHead();
             log.debug("parent oid={}", parentOid);
-            String author = formatAuthor();
-            String msg = get("message");
             List<String> parents = (parentOid == null || parentOid.isEmpty())
                     ? Collections.emptyList()
                     : Collections.singletonList(parentOid);
-            Commit commit = new Commit(treeOid, parents, author, author, msg);
-            String commitOid = repo.getDatabase().store(commit);
-            log.debug("stored commit oid={}", commitOid);
+            String commitOid = WriteCommit.writeCommit(parents, msg);
 
-            repo.getRefs().updateCurrentBranch(commitOid);
-            log.info("commit created oid={} tree={}", commitOid, treeOid);
+            log.info("commit created oid={}", commitOid);
             System.out.println("[" + ObjectDatabase.shortOid(commitOid) + "] " + Commit.firstLine(msg));
         } catch (IOException e) {
             log.error("commit failed", e);
@@ -74,13 +82,18 @@ public class CommitCommand extends BaseCommand {
         }
     }
 
-    /**
-     * 生成当前作者字符串，格式：Name &lt;name@local&gt; timestamp +0000。
-     */
-    private static String formatAuthor() {
-        String user = System.getProperty("user.name", "user");
-        long sec = System.currentTimeMillis() / 1000;
-        return user + " <" + user + "@local> " + sec + " +0000";
+    private void handleConflictCommit(PendingCommit pendingCommit) throws IOException {
+        if (repo.getIndex().isConflicted()) {
+            System.err.println("error: cannot continue, unresolved conflicts remain.");
+            exitCode = 1;
+            return;
+        }
+        String headOid = repo.getRefs().readHead();
+        String mergeHeadOid = pendingCommit.readMergeHead();
+        String mergeMessage = pendingCommit.readMergeMessage();
+        String commitOid = WriteCommit.writeCommit(Arrays.asList(headOid, mergeHeadOid), mergeMessage);
+        pendingCommit.clear();
+        System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(commitOid));
     }
 
 }

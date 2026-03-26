@@ -619,4 +619,107 @@ class MergeCommandTest {
         String headAfterMerge = Repository.INSTANCE.getRefs().readHead();
         assertThat(headAfterMerge).isEqualTo(headBeforeMerge);
     }
+
+    /**
+     * 场景：冲突后先保留 MERGE_*，手工解决并 add 后通过 merge --continue 完成提交。
+     * <p>
+     * 文本示意图：
+     * <p>
+     *        A(f.txt=1)
+     *       /          \
+     *   B(master=2)   C(topic=3)
+     * <p>
+     * 流程：
+     * - 在 master merge topic 触发冲突，产生 MERGE_HEAD/MERGE_MSG；
+     * - 手工把 f.txt 解决为 resolved，并 add 覆盖冲突条目；
+     * - 执行 merge --continue，写入 merge commit，且清理 MERGE_*。
+     */
+    @Test
+    @DisplayName("merge 冲突解决后可通过 merge --continue 写入 merge commit 并清理 MERGE_*")
+    void merge_continue_afterResolvedConflicts_createsMergeCommit(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+
+        Files.writeString(f, "1");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.writeString(f, "2");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.writeString(f, "3");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Repository.find(tempDir);
+        String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+        String topicTip = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "topic"));
+
+        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_HEAD"))).isTrue();
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_MSG"))).isTrue();
+
+        Files.writeString(f, "resolved");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+
+        ExecuteResult continueResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "--continue");
+        assertThat(continueResult.getExitCode()).isEqualTo(0);
+        assertThat(continueResult.getOutput()).contains("Merge made. New commit:");
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_HEAD"))).isFalse();
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_MSG"))).isFalse();
+
+        String headAfterContinue = Repository.INSTANCE.getRefs().readHead();
+        assertThat(headAfterContinue).isNotEqualTo(headBeforeMerge);
+        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(headAfterContinue);
+        assertThat(mergeCommit).isNotNull();
+        assertThat(mergeCommit.getParentOids()).containsExactly(headBeforeMerge, topicTip);
+        assertThat(mergeCommit.getMessage()).isEqualTo("Merge branch 'topic'");
+    }
+
+    /**
+     * 场景：当存在未完成 merge（MERGE_HEAD 存在）时，禁止再次发起新的 merge。
+     * <p>
+     * 文本示意图：
+     * <p>
+     *        A(f.txt=1)
+     *       /          \
+     *   B(master=2)   C(topic=3)
+     * <p>
+     * 流程：
+     * - 第一次 merge topic 进入冲突态（in-progress）；
+     * - 再次执行 merge topic 应直接失败并提示 merge already in progress。
+     */
+    @Test
+    @DisplayName("merge 进行中再次执行 merge <rev> 会失败并提示 in progress")
+    void merge_whenInProgress_startNewMergeFails(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+
+        Files.writeString(f, "1");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.writeString(f, "2");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.writeString(f, "3");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        ExecuteResult firstMerge = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(firstMerge.getExitCode()).isNotEqualTo(0);
+
+        ExecuteResult secondMerge = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(secondMerge.getExitCode()).isNotEqualTo(0);
+        assertThat(secondMerge.getErr()).contains("merge already in progress");
+    }
 }

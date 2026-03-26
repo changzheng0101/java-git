@@ -2,7 +2,6 @@ package com.weixiao.command;
 
 import com.weixiao.merge.MergeInputs;
 import com.weixiao.merge.MergeResolve;
-import com.weixiao.obj.Commit;
 import com.weixiao.repo.*;
 import com.weixiao.revision.RevisionParseException;
 import org.slf4j.Logger;
@@ -23,12 +22,31 @@ public class MergeCommand extends BaseCommand {
     private static final Logger log = LoggerFactory.getLogger(MergeCommand.class);
 
     @SuppressWarnings("unused")
-    @Parameters(index = "0", paramLabel = "REV", description = "要合并的分支或修订")
+    @Parameters(index = "0", arity = "0..1", paramLabel = "REV", description = "要合并的分支或修订")
     private String rev;
+
+    @SuppressWarnings("unused")
+    @Option(names = {"--continue"}, description = "继续一个已开始但未完成的 merge")
+    private boolean continueMerge;
 
     @Override
     protected void doRun() {
         try {
+            PendingCommit pendingCommit = new PendingCommit(repo.getGitDir());
+            if (continueMerge) {
+                handleContinue(pendingCommit);
+                return;
+            }
+            if (pendingCommit.inProgress()) {
+                System.err.println("error: merge already in progress.");
+                exitCode = 1;
+                return;
+            }
+            if (rev == null || rev.isBlank()) {
+                System.err.println("fatal: merge target is required.");
+                exitCode = 1;
+                return;
+            }
             MergeInputs inputs = MergeInputs.from(rev);
             if (inputs.getHeadOid() == null || inputs.getHeadOid().isEmpty()) {
                 System.err.println("fatal: Not a valid object name: 'HEAD'.");
@@ -56,7 +74,6 @@ public class MergeCommand extends BaseCommand {
             }
 
             String mergeMsg = "Merge branch '" + rev + "'";
-            PendingCommit pendingCommit = new PendingCommit(repo.getGitDir());
             pendingCommit.start(inputs.getMergeOid(), mergeMsg);
 
             MergeResolve mergeResolve = new MergeResolve(inputs, rev);
@@ -69,11 +86,7 @@ public class MergeCommand extends BaseCommand {
                 return;
             }
 
-            String treeOid = TreeBuilder.buildTreeFromIndex(repo.getIndex().getEntries());
-            String author = formatAuthor();
-            Commit mergeCommit = new Commit(treeOid, Arrays.asList(inputs.getHeadOid(), inputs.getMergeOid()), author, author, mergeMsg);
-            String newCommitOid = repo.getDatabase().store(mergeCommit);
-            repo.getRefs().updateCurrentBranch(newCommitOid);
+            String newCommitOid = WriteCommit.writeCommit(Arrays.asList(inputs.getHeadOid(), inputs.getMergeOid()), mergeMsg);
             pendingCommit.clear();
             System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(newCommitOid));
         } catch (RevisionParseException e) {
@@ -87,9 +100,23 @@ public class MergeCommand extends BaseCommand {
         }
     }
 
-    private static String formatAuthor() {
-        String user = System.getProperty("user.name", "user");
-        long sec = System.currentTimeMillis() / 1000;
-        return user + " <" + user + "@local> " + sec + " +0000";
+    private void handleContinue(PendingCommit pendingCommit) throws IOException {
+        if (!pendingCommit.inProgress()) {
+            System.err.println("error: no merge in progress.");
+            exitCode = 1;
+            return;
+        }
+        repo.getIndex().load();
+        if (repo.getIndex().isConflicted()) {
+            System.err.println("error: cannot continue, unresolved conflicts remain.");
+            exitCode = 1;
+            return;
+        }
+        String headOid = repo.getRefs().readHead();
+        String mergeHeadOid = pendingCommit.readMergeHead();
+        String mergeMessage = pendingCommit.readMergeMessage();
+        String newCommitOid = WriteCommit.writeCommit(Arrays.asList(headOid, mergeHeadOid), mergeMessage);
+        pendingCommit.clear();
+        System.out.println("Merge made. New commit: " + ObjectDatabase.shortOid(newCommitOid));
     }
 }

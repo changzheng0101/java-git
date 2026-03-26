@@ -3,7 +3,11 @@ package com.weixiao.command;
 import com.weixiao.Jit;
 import com.weixiao.JitTestUtil;
 import com.weixiao.JitTestUtil.ExecuteResult;
+import com.weixiao.obj.Commit;
+import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
+import com.weixiao.repo.SysRef;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -157,5 +161,117 @@ class CommitCommandTest {
         String head = repo.getRefs().readHead();
         assertThat(head).isNotNull();
         assertThat(repo.getDatabase().exists(head)).isTrue();
+    }
+
+    /**
+     * 场景：merge 冲突未解决时执行 commit，应按 continue 语义失败。
+     * <p>
+     * 文本示意图：
+     * <p>
+     *        A(f.txt=1)
+     *       /          \
+     *   B(master=2)   C(topic=3)
+     * <p>
+     * 流程：
+     * - 在 master merge topic 触发冲突，产生 MERGE_HEAD/MERGE_MSG；
+     * - 不解决冲突直接执行 commit；
+     * <p>
+     * 期望：
+     * - commit 失败并提示 unresolved conflicts；
+     * - MERGE_HEAD/MERGE_MSG 仍然保留。
+     */
+    @Test
+    @DisplayName("merge 冲突未解决时 commit 失败并保留 MERGE_*")
+    void commit_inProgressMergeWithConflicts_fails(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+
+        Files.writeString(f, "1");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.writeString(f, "2");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.writeString(f, "3");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
+
+        ExecuteResult commitResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit");
+        assertThat(commitResult.getExitCode()).isNotEqualTo(0);
+        assertThat(commitResult.getErr()).contains("unresolved conflicts remain");
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_HEAD"))).isTrue();
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_MSG"))).isTrue();
+    }
+
+    /**
+     * 场景：merge 冲突手工解决并 add 后，执行 commit 应按 continue 语义完成 merge 提交。
+     * <p>
+     * 文本示意图：
+     * <p>
+     *        A(f.txt=1)
+     *       /          \
+     *   B(master=2)   C(topic=3)
+     * <p>
+     * 流程：
+     * - 在 master merge topic 触发冲突，产生 MERGE_HEAD/MERGE_MSG；
+     * - 手工把 f.txt 改为 resolved 并 add；
+     * - 执行 commit（不传 -m）；
+     * <p>
+     * 期望：
+     * - 写入 merge commit，parents=[masterTip, topicTip]；
+     * - 提交消息使用 MERGE_MSG；
+     * - MERGE_HEAD/MERGE_MSG 被清理。
+     */
+    @Test
+    @DisplayName("merge 冲突解决后 commit 可继续并写入 merge commit")
+    void commit_inProgressMergeResolved_succeeds(@TempDir Path tempDir) throws Exception {
+        JIT.execute("-C", tempDir.toString(), "init");
+        Path f = tempDir.resolve("f.txt");
+
+        Files.writeString(f, "1");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "A");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "topic");
+
+        Files.writeString(f, "2");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "B");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "topic");
+        Files.writeString(f, "3");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "C");
+
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
+        Repository.find(tempDir);
+        String headBeforeMerge = Repository.INSTANCE.getRefs().readHead();
+        String topicTip = Repository.INSTANCE.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "topic"));
+
+        ExecuteResult mergeResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "topic");
+        assertThat(mergeResult.getExitCode()).isNotEqualTo(0);
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_HEAD"))).isTrue();
+
+        Files.writeString(f, "resolved");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
+
+        ExecuteResult commitResult = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit");
+        assertThat(commitResult.getExitCode()).isEqualTo(0);
+        assertThat(commitResult.getOutput()).contains("Merge made. New commit:");
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_HEAD"))).isFalse();
+        assertThat(Files.exists(tempDir.resolve(".git").resolve("MERGE_MSG"))).isFalse();
+
+        String headAfterCommit = Repository.INSTANCE.getRefs().readHead();
+        Commit mergeCommit = Repository.INSTANCE.getDatabase().loadCommit(headAfterCommit);
+        Assertions.assertNotNull(mergeCommit);
+        assertThat(mergeCommit.getParentOids()).containsExactly(headBeforeMerge, topicTip);
+        assertThat(mergeCommit.getMessage()).isEqualTo("Merge branch 'topic'");
     }
 }

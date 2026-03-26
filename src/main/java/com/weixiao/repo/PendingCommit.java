@@ -34,4 +34,25 @@ public final class PendingCommit {
         Files.deleteIfExists(gitDir.resolve(MERGE_HEAD));
         Files.deleteIfExists(gitDir.resolve(MERGE_MSG));
     }
+
+    /**
+     * 是否存在未完成的 merge（通过 MERGE_HEAD 是否存在判断）。
+     */
+    public boolean inProgress() {
+        return Files.exists(gitDir.resolve(MERGE_HEAD));
+    }
+
+    /**
+     * 读取 MERGE_HEAD（右侧提交 oid）。
+     */
+    public String readMergeHead() throws IOException {
+        return Files.readString(gitDir.resolve(MERGE_HEAD), StandardCharsets.UTF_8).trim();
+    }
+
+    /**
+     * 读取 MERGE_MSG（待使用的 merge 提交消息）。
+     */
+    public String readMergeMessage() throws IOException {
+        return Files.readString(gitDir.resolve(MERGE_MSG), StandardCharsets.UTF_8).trim();
+    }
 }
