@@ -2,7 +2,6 @@ package com.weixiao.command;
 
 import com.weixiao.obj.Blob;
 import com.weixiao.repo.Index;
-import com.weixiao.repo.Repository;
 import com.weixiao.repo.Workspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +26,9 @@ public class AddCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(AddCommand.class);
 
-    /** 多值参数分隔符（路径中一般不包含）。 */
+    /**
+     * 多值参数分隔符（路径中一般不包含）。
+     */
     private static final String PATHS_SEP = "\n";
 
     /**
@@ -73,7 +74,7 @@ public class AddCommand extends BaseCommand {
                     exitCode = 1;
                     continue;
                 }
-                addPath(repo, root, resolved);
+                addPath(root, resolved);
             }
 
             repo.getIndex().save();
@@ -90,11 +91,11 @@ public class AddCommand extends BaseCommand {
      * 文件：读内容生成 blob，取 mode，写入 index。
      * 目录：递归收集所有普通文件，逐个添加。
      */
-    private void addPath(Repository repo, Path root, Path resolved) throws IOException {
+    private void addPath(Path root, Path resolved) throws IOException {
         if (Files.isRegularFile(resolved)) {
-            addFile(repo, root, resolved);
+            addFile(root, resolved);
         } else if (Files.isDirectory(resolved)) {
-            addDirectory(repo, root, resolved);
+            addDirectory(root, resolved);
         }
     }
 
@@ -102,27 +103,27 @@ public class AddCommand extends BaseCommand {
      * 添加单个文件到暂存区，使用文件真实 stat（ctime/mtime/dev/ino/uid/gid）。
      * todo 考虑删除文件的情况，这时候执行add命令，其实是将对应删除的文件从index中移除
      */
-    private void addFile(Repository repo, Path root, Path filePath) throws IOException {
+    private void addFile(Path root, Path filePath) throws IOException {
         String relative = root.relativize(filePath).toString().replace('\\', '/');
         byte[] data = repo.getWorkspace().readFile(filePath);
         Blob blob = new Blob(data);
         String blobOid = repo.getDatabase().store(blob);
         String mode = repo.getWorkspace().getFileMode(filePath);
         Index.IndexStat stat = Workspace.getFileStat(filePath);
-        repo.getIndex().add(relative, mode, blobOid, data.length, stat);
+        repo.getIndex().add(new Index.Entry(relative, mode, blobOid, 0, data.length, stat));
         log.debug("added file {} -> {} mode={} size={} stat={}", relative, blobOid, mode, data.length, stat);
     }
 
     /**
      * 递归添加目录下所有普通文件。
      */
-    private void addDirectory(Repository repo, Path root, Path dirPath) throws IOException {
+    private void addDirectory(Path root, Path dirPath) throws IOException {
         List<Path> children = repo.getWorkspace().listEntries(dirPath);
         for (Path child : children) {
             if (Files.isRegularFile(child)) {
-                addFile(repo, root, child);
+                addFile(root, child);
             } else if (Files.isDirectory(child)) {
-                addDirectory(repo, root, child);
+                addDirectory(root, child);
             }
         }
     }

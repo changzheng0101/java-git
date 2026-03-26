@@ -148,14 +148,28 @@ public final class Migration {
             if (e.getEntryB() != null && !e.getEntryB().isDirectory()) {
                 Path filePath = root.resolve(e.getPath());
                 TreeEntry newEntry = e.getEntryB();
-                index.add(PathUtils.normalizePath(e.getPath()), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
+                index.add(new Index.Entry(
+                        PathUtils.normalizePath(e.getPath()),
+                        newEntry.getMode(),
+                        newEntry.getOid(),
+                        0,
+                        (int) Files.size(filePath),
+                        Workspace.getFileStat(filePath)
+                ));
             }
         }
         for (DiffEntry e : modifies) {
             if (e.getEntryB() != null && !e.getEntryB().isDirectory()) {
                 Path filePath = root.resolve(e.getPath());
                 TreeEntry newEntry = e.getEntryB();
-                index.add(PathUtils.normalizePath(e.getPath()), newEntry.getMode(), newEntry.getOid(), (int) Files.size(filePath), Workspace.getFileStat(filePath));
+                index.add(new Index.Entry(
+                        PathUtils.normalizePath(e.getPath()),
+                        newEntry.getMode(),
+                        newEntry.getOid(),
+                        0,
+                        (int) Files.size(filePath),
+                        Workspace.getFileStat(filePath)
+                ));
             }
         }
     }

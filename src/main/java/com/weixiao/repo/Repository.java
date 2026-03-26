@@ -6,6 +6,7 @@ import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
+import com.weixiao.utils.CryptoUtils;
 import com.weixiao.utils.HexUtils;
 import lombok.Getter;
 import org.slf4j.Logger;
@@ -15,8 +16,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /**
@@ -196,11 +195,7 @@ public final class Repository {
         byte[] content = new byte[headerBytes.length + body.length];
         System.arraycopy(headerBytes, 0, content, 0, headerBytes.length);
         System.arraycopy(body, 0, content, headerBytes.length, body.length);
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-1").digest(content);
-            return HexUtils.bytesToHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
+        byte[] digest = CryptoUtils.sha1(content);
+        return HexUtils.bytesToHex(digest);
     }
 }

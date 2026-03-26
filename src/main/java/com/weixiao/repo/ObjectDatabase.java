@@ -5,6 +5,7 @@ import com.weixiao.obj.Blob;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.obj.Tree;
+import com.weixiao.utils.CryptoUtils;
 import com.weixiao.utils.HexUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,8 +17,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -247,11 +246,7 @@ public final class ObjectDatabase {
      * 计算输入字节的 SHA-1 摘要（20 字节）。
      */
     private static byte[] sha1(byte[] input) {
-        try {
-            return MessageDigest.getInstance("SHA-1").digest(input);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
+        return CryptoUtils.sha1(input);
     }
 
     /**

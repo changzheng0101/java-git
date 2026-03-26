@@ -1,6 +1,8 @@
 package com.weixiao.repo;
 
 import com.weixiao.obj.TreeEntry;
+import com.weixiao.utils.BinaryIOUtils;
+import com.weixiao.utils.CryptoUtils;
 import com.weixiao.utils.HexUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -15,11 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 
 import lombok.Value;
 
@@ -184,22 +184,22 @@ public final class Index {
         entries.sort(Comparator.comparing(Entry::getPath).thenComparingInt(Entry::getStage));
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(SIGNATURE);
-        writeInt(out, VERSION);
-        writeInt(out, entries.size());
+        BinaryIOUtils.writeInt(out, VERSION);
+        BinaryIOUtils.writeInt(out, entries.size());
 
         for (Entry e : entries) {
             IndexStat s = e.getStat();
-            writeInt(out, s.getCtimeSec());
-            writeInt(out, s.getCtimeNsec());
-            writeInt(out, s.getMtimeSec());
-            writeInt(out, s.getMtimeNsec());
-            writeInt(out, s.getDev());
-            writeInt(out, s.getIno());
+            BinaryIOUtils.writeInt(out, s.getCtimeSec());
+            BinaryIOUtils.writeInt(out, s.getCtimeNsec());
+            BinaryIOUtils.writeInt(out, s.getMtimeSec());
+            BinaryIOUtils.writeInt(out, s.getMtimeNsec());
+            BinaryIOUtils.writeInt(out, s.getDev());
+            BinaryIOUtils.writeInt(out, s.getIno());
             int mode = Integer.parseInt(e.getMode(), 8);
-            writeInt(out, mode);
-            writeInt(out, s.getUid());
-            writeInt(out, s.getGid());
-            writeInt(out, e.getSize());
+            BinaryIOUtils.writeInt(out, mode);
+            BinaryIOUtils.writeInt(out, s.getUid());
+            BinaryIOUtils.writeInt(out, s.getGid());
+            BinaryIOUtils.writeInt(out, e.getSize());
             out.write(HexUtils.hexToBytes(e.getOid()));
             byte[] nameBytes = e.getPath().getBytes(StandardCharsets.UTF_8);
             int nameLen = Math.min(nameBytes.length, 0xFFF);
@@ -209,7 +209,7 @@ public final class Index {
             // - bit 13-12: stage（0..3）
             // - bit 11-0: name length（最大 0xFFF，超长使用 0xFFF + NUL 结尾路径）
             int flags = ((e.getStage() & 0x3) << 12) | nameLen;
-            writeShort(out, (short) flags);
+            BinaryIOUtils.writeShort(out, (short) flags);
             out.write(nameBytes);
             out.write(0);       // NUL
             int pad = (8 - ((ENTRY_FIXED_SIZE + nameBytes.length + 1) % 8)) % 8;
@@ -225,53 +225,42 @@ public final class Index {
         log.debug("saved index entries={} checksum={}", entries.size(), HexUtils.bytesToHex(checksum));
     }
 
-    private void writeInt(ByteArrayOutputStream out, int v) {
-        out.write((v >> 24) & 0xff);
-        out.write((v >> 16) & 0xff);
-        out.write((v >> 8) & 0xff);
-        out.write(v & 0xff);
-    }
-
-    private void writeShort(ByteArrayOutputStream out, short v) {
-        out.write((v >> 8) & 0xff);
-        out.write(v & 0xff);
-    }
-
     private static byte[] sha1(byte[] input) {
-        try {
-            return MessageDigest.getInstance("SHA-1").digest(input);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    /**
-     * 添加或覆盖一条记录（同一 path 只保留一条）。stat 为文件真实属性（ctime/mtime/dev/ino/uid/gid）。
-     * 同时移除与“文件/目录”冲突的已有条目，避免出现同一名字既是文件又是目录：
-     * - 若新路径为 a/b（目录下的文件），则移除已有条目 a（原为文件，现为目录）。
-     * - 若新路径为 a（文件），则移除已有条目 a/xxx（原为目录下的文件，现 a 为文件）。
-     */
-    public void add(String path, String mode, String oid, int size, IndexStat stat) {
-        add(path, mode, oid, 0, size, stat);
+        return CryptoUtils.sha1(input);
     }
 
     /**
      * 添加或覆盖一条记录（同一 path+stage 只保留一条）。
+     * stat 为文件真实属性（ctime/mtime/dev/ino/uid/gid）。
+     * 同时移除与“文件/目录”冲突的已有条目，避免出现同一名字既是文件又是目录：
+     * - 若新路径为 a/b（目录下的文件），则移除已有条目 a（原为文件，现为目录）。
+     * - 若新路径为 a（文件），则移除已有条目 a/xxx（原为目录下的文件，现 a 为文件）。
      */
-    public void add(String path, String mode, String oid, int stage, int size, IndexStat stat) {
-        if (stage < 0 || stage > 3) {
-            throw new IllegalArgumentException("stage must be between 0 and 3");
+    @SuppressWarnings("ConstantValue")
+    public void add(Entry entry) {
+        if (entry.getStage() != 0) {
+            throw new IllegalArgumentException("add only supports stage-0 entry");
         }
-        Objects.requireNonNull(stat, "stat must not be null");
-        String normalized = path.replace('\\', '/');
+        String path = entry.getPath();
         // 同路径同 stage 覆盖
-        entries.removeIf(e -> e.getPath().equals(normalized) && e.getStage() == stage);
+        entries.removeIf(e -> e.getPath().equals(path) && e.getStage() == entry.getStage());
+        // 同路径冲突 stage 清理：当写入 stage-0 时移除 stage-1/2/3
+        entries.removeIf(e -> e.getPath().equals(path) && e.getStage() != 0);
         // 新路径是「目录/文件」时：移除原以该路径为名的文件（现为目录）
-        entries.removeIf(e -> normalized.startsWith(e.getPath() + "/"));
+        entries.removeIf(e -> path.startsWith(e.getPath() + "/"));
         // 新路径是单层文件时：移除原在该路径「目录」下的所有条目（现该路径为文件）
-        entries.removeIf(e -> e.getPath().startsWith(normalized + "/"));
-        entries.add(new Entry(normalized, mode, oid, stage, size, stat));
-        log.debug("add entry path={} mode={} oid={} stage={} size={} stat={}", normalized, mode, oid, stage, size, stat);
+        entries.removeIf(e -> e.getPath().startsWith(path + "/"));
+
+        entries.add(entry);
+        log.debug(
+                "add entry path={} mode={} oid={} stage={} size={} stat={}",
+                entry.getPath(),
+                entry.getMode(),
+                entry.getOid(),
+                entry.getStage(),
+                entry.getSize(),
+                entry.getStat()
+        );
     }
 
     /**
@@ -281,12 +270,11 @@ public final class Index {
      * - 若某一侧不存在（entry 为 null），则跳过该 stage。
      */
     public void addConflictSet(String path, TreeEntry base, TreeEntry ours, TreeEntry theirs) {
-        String normalized = path.replace('\\', '/');
-        entries.removeIf(e -> e.getPath().equals(normalized));
-        addConflictEntry(normalized, base, 1);
-        addConflictEntry(normalized, ours, 2);
-        addConflictEntry(normalized, theirs, 3);
-        log.debug("add conflict set path={} base={} ours={} theirs={}", normalized, base, ours, theirs);
+        entries.removeIf(e -> e.getPath().equals(path));
+        addConflictEntry(path, base, 1);
+        addConflictEntry(path, ours, 2);
+        addConflictEntry(path, theirs, 3);
+        log.debug("add conflict set path={} base={} ours={} theirs={}", path, base, ours, theirs);
     }
 
     private void addConflictEntry(String path, TreeEntry entry, int stage) {
@@ -294,15 +282,6 @@ public final class Index {
             return;
         }
         entries.add(new Entry(path, entry.getMode(), entry.getOid(), stage, 0, IndexStat.EMPTY));
-    }
-
-    /**
-     * 清空暂存区所有条目（不写回文件），用于 checkout 等场景重置 index。
-     */
-    @SuppressWarnings("unused")
-    public void clear() {
-        entries.clear();
-        log.debug("index cleared");
     }
 
     /**
@@ -337,19 +316,6 @@ public final class Index {
             if (e.getPath().equals(normalized) && e.getStage() == stage) return e;
         }
         return null;
-    }
-
-    /**
-     * 文件是否被 index 跟踪（任意 stage 0..3 只要存在一条即返回 true）。
-     */
-    @SuppressWarnings("unused")
-    public boolean trackedFile(String path) {
-        for (int stage = 0; stage <= 3; stage++) {
-            if (getEntryForPath(path, stage) != null) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
