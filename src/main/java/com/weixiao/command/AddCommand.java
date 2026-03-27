@@ -108,7 +108,7 @@ public class AddCommand extends BaseCommand {
         byte[] data = repo.getWorkspace().readFile(filePath);
         Blob blob = new Blob(data);
         String blobOid = repo.getDatabase().store(blob);
-        String mode = repo.getWorkspace().getFileMode(filePath);
+        String mode = Workspace.getFileMode(filePath);
         Index.IndexStat stat = Workspace.getFileStat(filePath);
         repo.getIndex().add(new Index.Entry(relative, mode, blobOid, 0, data.length, stat));
         log.debug("added file {} -> {} mode={} size={} stat={}", relative, blobOid, mode, data.length, stat);
@@ -118,7 +118,7 @@ public class AddCommand extends BaseCommand {
      * 递归添加目录下所有普通文件。
      */
     private void addDirectory(Path root, Path dirPath) throws IOException {
-        List<Path> children = repo.getWorkspace().listEntries(dirPath);
+        List<Path> children = Workspace.listEntries(dirPath);
         for (Path child : children) {
             if (Files.isRegularFile(child)) {
                 addFile(root, child);

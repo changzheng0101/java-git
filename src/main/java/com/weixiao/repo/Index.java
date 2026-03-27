@@ -49,6 +49,19 @@ public final class Index {
         this.gitDir = gitDir.toAbsolutePath().normalize();
     }
 
+
+    /**
+     * 路径是否被 index 跟踪。
+     * <p>
+     * 对文件路径：存在同路径 entry（任意 stage）即为 true。
+     * 对目录路径：存在该目录下任意已跟踪路径（path/xxx）即为 true。
+     */
+    public boolean tracked(String path) {
+        return entries.stream()
+                .anyMatch(entry -> entry.getPath().startsWith(path));
+    }
+
+
     /**
      * index 一条 entry 的 stat 属性（ctime/mtime/dev/ino/uid/gid），与 Git index 格式一致。
      */

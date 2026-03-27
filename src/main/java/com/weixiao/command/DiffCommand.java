@@ -7,6 +7,7 @@ import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 import com.weixiao.model.StatusResult;
+import com.weixiao.repo.Workspace;
 import com.weixiao.utils.DiffColor;
 import com.weixiao.utils.DiffUtils;
 import org.slf4j.Logger;
@@ -206,7 +207,7 @@ public class DiffCommand extends BaseCommand {
         return new DiffSide(
                 path,
                 Repository.computeBlobOid(bytes),
-                repo.getWorkspace().getFileMode(fullPath),
+                Workspace.getFileMode(fullPath),
                 new String(bytes, StandardCharsets.UTF_8)
         );
     }

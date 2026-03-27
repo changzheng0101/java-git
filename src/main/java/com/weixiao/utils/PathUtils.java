@@ -3,6 +3,8 @@ package com.weixiao.utils;
 import com.google.common.base.Strings;
 import lombok.experimental.UtilityClass;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -93,4 +95,24 @@ public class PathUtils {
         return result;
     }
 
+    /**
+     * 判断目录树是否“只包含空目录，不包含任何文件”。
+     * <p>
+     * 仅当 path 存在且为目录，且其目录树中不存在普通文件时返回 true。
+     */
+    public static boolean containsOnlyEmptyDirectories(Path path) throws IOException {
+        if (path == null || !Files.isDirectory(path)) {
+            return false;
+        }
+        for (Path child : com.weixiao.repo.Workspace.listEntries(path)) {
+            if (Files.isRegularFile(child)) {
+                return false;
+            }
+            if (Files.isDirectory(child) && !containsOnlyEmptyDirectories(child)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
+

@@ -41,46 +41,6 @@ public final class Workspace {
         this.root = root.toAbsolutePath().normalize();
     }
 
-    /**
-     * 列出根目录下的普通文件（不含目录、不含 .git）。
-     * 简化实现：仅一层，不递归子目录。
-     *
-     * @deprecated 使用 listEntries() 支持递归目录
-     */
-    @Deprecated
-    public List<String> listFiles() throws IOException {
-        List<String> names = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(root)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(p)) continue;
-                String name = p.getFileName().toString();
-                if (GIT_DIR.equals(name)) continue;
-                names.add(name);
-            }
-        }
-        log.debug("listFiles root={} count={} names={}", root, names.size(), names);
-        return names;
-    }
-
-    /**
-     * 列出指定目录下的所有条目（文件和子目录），排除 .git。
-     * 返回相对于 basePath 的路径列表。
-     */
-    public List<Path> listEntries(Path basePath) throws IOException {
-        List<Path> entries = new ArrayList<>();
-        if (!Files.exists(basePath) || !Files.isDirectory(basePath)) {
-            return entries;
-        }
-        try (Stream<Path> stream = Files.list(basePath)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                String name = p.getFileName().toString();
-                if (GIT_DIR.equals(name)) continue;
-                entries.add(p);
-            }
-        }
-        log.debug("listEntries basePath={} count={}", basePath, entries.size());
-        return entries;
-    }
 
     /**
      * 读取工作区根目录下名为 name 的文件的全部字节。
@@ -121,7 +81,7 @@ public final class Workspace {
      * 获取指定路径的 Git mode 字符串。
      * 对于目录返回 "40000"，对于文件返回基于权限的 mode。
      */
-    public String getFileMode(Path filePath) throws IOException {
+    public static String getFileMode(Path filePath) throws IOException {
         if (Files.isDirectory(filePath)) {
             return "40000";
         }
@@ -174,6 +134,25 @@ public final class Workspace {
                 (int) (ctimeSec & 0xFFFFFFFFL), ctimeNsec,
                 (int) (mtimeSec & 0xFFFFFFFFL), mtimeNsec,
                 dev, ino, uid, gid);
+    }
+
+    /**
+     * 列出指定目录下的所有条目（文件和子目录），排除 .git。
+     */
+    public static List<Path> listEntries(Path basePath) throws IOException {
+        List<Path> entries = new ArrayList<>();
+        if (!Files.exists(basePath) || !Files.isDirectory(basePath)) {
+            return entries;
+        }
+        try (Stream<Path> stream = Files.list(basePath)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                if (GIT_DIR.equals(p.getFileName().toString())) {
+                    continue;
+                }
+                entries.add(p);
+            }
+        }
+        return entries;
     }
 
     /**
@@ -311,10 +290,9 @@ public final class Workspace {
         for (String dir : rmdirsSorted) {
             Path p = root.resolve(dir);
             if (Files.exists(p) && Files.isDirectory(p)) {
-                try (Stream<Path> stream = Files.list(p)) {
-                    if (stream.findAny().isEmpty()) {
-                        deletePath(dir);
-                    }
+                List<Path> paths = Workspace.listEntries(p);
+                if (paths.stream().findAny().isEmpty()) {
+                    deletePath(dir);
                 }
             }
         }
