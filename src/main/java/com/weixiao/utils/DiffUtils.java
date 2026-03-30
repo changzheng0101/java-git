@@ -16,6 +16,24 @@ import java.util.List;
 public class DiffUtils {
 
     /**
+     * 一行文本：{@code lineNum} 为在所属文档中的从 0 开始的行索引，{@code content} 为行内容（可含末尾换行）。
+     */
+    public record Line(int lineNum, String content) {
+
+        public Line {
+            content = content != null ? content : "";
+        }
+
+        /**
+         * 表示该侧无对应行（如 INS 无 a 侧、DEL 无 b 侧）。
+         */
+        public static Line absent() {
+            return new Line(-1, "");
+        }
+
+    }
+
+    /**
      * 编辑类型：相等、插入、删除
      */
     public enum EditType {
@@ -34,16 +52,51 @@ public class DiffUtils {
     }
 
     /**
-     * 单条编辑：类型 + 行内容（insert/delete 时仅一侧有内容）
+     * 单条编辑：类型 + a/b 两侧 {@link Line}（无行的一侧为 {@link Line#absent()}）。
      */
     @Getter
     public static final class Edit {
         private final EditType type;
-        private final String line;
+        /**
+         * a 侧行（含行号）；无则为absent
+         */
+        private final Line lineA;
+        /**
+         * b 侧行（含行号）；无则为absent
+         */
+        private final Line lineB;
 
-        public Edit(EditType type, String line) {
+        public Edit(EditType type, Line lineA, Line lineB) {
             this.type = type;
-            this.line = line != null ? line : "";
+            this.lineA = lineA != null ? lineA : Line.absent();
+            this.lineB = lineB != null ? lineB : Line.absent();
+        }
+
+        /**
+         * 便捷构造：{@code line} 携带真实 {@link Line#lineNum()} 与内容。
+         * EQL 两侧均为该 {@link Line}；INS 仅 b 侧；DEL 仅 a 侧；另一侧为 {@link Line#absent()}。
+         */
+        public Edit(EditType type, Line line) {
+            this.type = type;
+            this.lineA = switch (type) {
+                case INS -> Line.absent();
+                case EQL, DEL -> line;
+            };
+            this.lineB = switch (type) {
+                case DEL -> Line.absent();
+                case EQL, INS -> line;
+            };
+        }
+
+        /**
+         * 便于沿用旧代码：EQL 返回 a 侧内容，INS 返回 b，DEL 返回 a。
+         */
+        public String getLine() {
+            return switch (type) {
+                case EQL -> lineA.content();
+                case INS -> lineB.content();
+                case DEL -> lineA.content();
+            };
         }
 
         /**
@@ -52,61 +105,89 @@ public class DiffUtils {
         @Override
         public String toString() {
             String prefix = type == EditType.EQL ? " " : (type == EditType.INS ? "+" : "-");
-            return prefix + line;
+            return prefix + getLine();
         }
     }
 
     /**
-     * 将文档按行切分；若已是行列表则按字符串比较。
+     * 将 {@link String} 列表按索引封装为 {@link Line}（行号 0..n-1）。
      */
-    public static List<String> lines(Object document) {
+    public static List<Line> numberedLines(List<String> contents) {
+        List<Line> out = new ArrayList<>(contents.size());
+        for (int i = 0; i < contents.size(); i++) {
+            String s = contents.get(i);
+            out.add(new Line(i, s != null ? s : ""));
+        }
+        return out;
+    }
+
+    /**
+     * 将文档按行切分为 {@link Line} 列表；{@code lineNum} 为从 0 递增。
+     * 入参为 {@link String} 时按换行切分（行串含 {@code \n}）；为 {@link List} 时若元素为 {@link Line} 则原样复制列表，
+     * 否则视为已分行字符串列表并按下标编号。
+     */
+    public static List<Line> lines(Object document) {
         if (document instanceof String s) {
-            List<String> result = new ArrayList<>();
+            List<Line> result = new ArrayList<>();
             int start = 0;
+            int row = 0;
             for (int i = 0; i <= s.length(); i++) {
                 if (i == s.length()) {
-                    if (start < i) result.add(s.substring(start));
+                    if (start < i) {
+                        result.add(new Line(row, s.substring(start)));
+                    }
                     break;
                 }
                 if (s.charAt(i) == '\n') {
-                    result.add(s.substring(start, i + 1)); // 含换行
+                    result.add(new Line(row, s.substring(start, i + 1)));
+                    row++;
                     start = i + 1;
                 }
             }
             return result;
         }
-        if (document instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<String> list = (List<String>) document;
-            return new ArrayList<>(list);
+        if (document instanceof List<?> list) {
+            if (!list.isEmpty() && list.get(0) instanceof Line) {
+                List<Line> copy = new ArrayList<>(list.size());
+                for (Object o : list) {
+                    copy.add((Line) o);
+                }
+                return copy;
+            }
+            List<Line> out = new ArrayList<>(list.size());
+            for (int i = 0; i < list.size(); i++) {
+                Object o = list.get(i);
+                String line = o instanceof String str ? str : String.valueOf(o);
+                out.add(new Line(i, line != null ? line : ""));
+            }
+            return out;
         }
-        throw new IllegalArgumentException("document must be String or List<String>");
+        throw new IllegalArgumentException("document must be String or List");
     }
 
     /**
-     * 对两个序列（可为 String 或 List&lt;String&gt;）做 Myers diff，返回编辑列表（从 a 到 b 的顺序）。
+     * 对两个序列（可为 String 或 List）做 Myers diff，返回编辑列表（从 a 到 b 的顺序）。
      */
     public static List<Edit> diff(Object a, Object b) {
-        List<String> aa = lines(a);
-        List<String> bb = lines(b);
+        List<Line> aa = lines(a);
+        List<Line> bb = lines(b);
         return diffLines(aa, bb);
     }
 
     /**
-     * 对两段已按行拆分的文本做 diff。
+     * 对两段已带行号的 {@link Line} 序列做 diff。
      */
-    public static List<Edit> diffLines(List<String> a, List<String> b) {
+    public static List<Edit> diffLines(List<Line> a, List<Line> b) {
         int n = a.size();
         int m = b.size();
-        if (n == 0 && m == 0) return new ArrayList<>();
+        if (n == 0 && m == 0) {
+            return new ArrayList<>();
+        }
         int max = n + m;
-        // V[k] 表示在对角线 k 上能到达的最大 x，k = x - y
-        // 在数组中的索引 index = k + max ,k 的取值范围 [-max , max]
         int[] v = new int[2 * max + 1];
-        // 存储每一步执行情况 里面的index对应移动步数，例如移动0步，trace.get(0)
         List<int[]> trace = new ArrayList<>();
 
-        v[max] = 0; // k=0 时初始 x=0
+        v[max] = 0;
         for (int d = 0; d <= max; d++) {
             int[] copy = new int[v.length];
             System.arraycopy(v, 0, copy, 0, v.length);
@@ -116,12 +197,11 @@ public class DiffUtils {
                 int idx = k + max;
                 int x;
                 if (k == -d || (k != d && v[idx - 1] < v[idx + 1])) {
-                    x = v[idx + 1]; // 从下方来（insert）
+                    x = v[idx + 1];
                 } else {
-                    x = v[idx - 1] + 1; // 从左边来（delete）
+                    x = v[idx - 1] + 1;
                 }
                 int y = x - k;
-                // 沿对角线走 snake
                 while (x < n && y < m && eq(a.get(x), b.get(y))) {
                     x++;
                     y++;
@@ -135,14 +215,12 @@ public class DiffUtils {
         return backtrack(a, b, trace);
     }
 
-    private static boolean eq(String s1, String s2) {
-        return (s1 == null && s2 == null) || (s1 != null && s1.equals(s2));
+    private static boolean eq(Line s1, Line s2) {
+        return s1.content().equals(s2.content());
     }
 
-    private static List<Edit> backtrack(List<String> a, List<String> b,
-                                        List<int[]> trace) {
+    private static List<Edit> backtrack(List<Line> a, List<Line> b, List<int[]> trace) {
         List<Edit> diff = new ArrayList<>();
-        // 记录当前位置 理论上已经到达右下角
         int x = a.size();
         int y = b.size();
         int max = x + y;
@@ -164,19 +242,18 @@ public class DiffUtils {
             int prevX = v[prevK + max];
             int prevY = prevX - prevK;
 
-            // 沿对角线回退（相等段）
             while (x > prevX && y > prevY) {
-                diff.add(new Edit(EditType.EQL, a.get(x - 1)));
+                diff.add(new Edit(EditType.EQL, a.get(x - 1), b.get(y - 1)));
                 x--;
                 y--;
             }
             if (d > 0) {
                 if (x == prevX) {
-                    diff.add(new Edit(EditType.INS, b.get(prevY)));
+                    diff.add(new Edit(EditType.INS, Line.absent(), b.get(prevY)));
                 } else if (y == prevY) {
-                    diff.add(new Edit(EditType.DEL, a.get(prevX)));
+                    diff.add(new Edit(EditType.DEL, a.get(prevX), Line.absent()));
                 } else {
-                    diff.add(new Edit(EditType.EQL, a.get(prevX)));
+                    diff.add(new Edit(EditType.EQL, a.get(prevX), b.get(prevY)));
                 }
             }
             x = prevX;

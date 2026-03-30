@@ -161,7 +161,7 @@ class StatusCommandTest {
     void status_modifiedFile_detected(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("test.txt");
-        Files.writeString(file, "original");
+        Files.writeString(file, "base");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "test.txt");
         Files.writeString(file, "modified");
 
@@ -191,7 +191,7 @@ class StatusCommandTest {
     void status_modifiedAndUntracked_bothShown(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path modifiedFile = tempDir.resolve("modified.txt");
-        Files.writeString(modifiedFile, "original");
+        Files.writeString(modifiedFile, "base");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "modified.txt");
         Files.writeString(modifiedFile, "changed");
 
@@ -275,7 +275,7 @@ class StatusCommandTest {
 
         // Modified
         Path modifiedFile = tempDir.resolve("modified.txt");
-        Files.writeString(modifiedFile, "original");
+        Files.writeString(modifiedFile, "base");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "modified.txt");
         Files.writeString(modifiedFile, "changed");
 
@@ -422,10 +422,10 @@ class StatusCommandTest {
         // 场景文本示意（执行 status 之前）：
         //
         //   HEAD:
-        //     committed.txt = "original"
+        //     committed.txt = "base"
         //
         //   index:
-        //     committed.txt = "original"
+        //     committed.txt = "base"
         //     deleted.txt   = "content"
         //     added.txt     = "new"
         //
@@ -442,7 +442,7 @@ class StatusCommandTest {
         //
         // 先创建一个文件并提交
         Path committedFile = tempDir.resolve("committed.txt");
-        Files.writeString(committedFile, "original");
+        Files.writeString(committedFile, "base");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "committed.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "Initial commit");
 
@@ -490,7 +490,7 @@ class StatusCommandTest {
         //
         // 先创建一个文件并提交
         Path committedFile = tempDir.resolve("committed.txt");
-        Files.writeString(committedFile, "original");
+        Files.writeString(committedFile, "base");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "committed.txt");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "Initial commit");
 

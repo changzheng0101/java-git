@@ -9,7 +9,6 @@ import com.weixiao.repo.Migration;
 import com.weixiao.repo.Repository;
 import com.weixiao.utils.PathUtils;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -244,27 +243,17 @@ public final class MergeResolve {
             return r;
         }
 
+        byte[] base = baseOid != null ? Repository.INSTANCE.getDatabase().loadBlob(baseOid).toBytes() : new byte[0];
         byte[] left = leftOid != null ? Repository.INSTANCE.getDatabase().loadBlob(leftOid).toBytes() : new byte[0];
         byte[] right = rightOid != null ? Repository.INSTANCE.getDatabase().loadBlob(rightOid).toBytes() : new byte[0];
-        byte[] merged = buildConflictBlob(left, right);
+        Diff3.MergeFileResult diff3 = Diff3.merge(
+                new String(base, StandardCharsets.UTF_8),
+                new String(left, StandardCharsets.UTF_8),
+                new String(right, StandardCharsets.UTF_8)
+        );
+        byte[] merged = diff3.render(LEFT_NAME, mergeRevisionName).getBytes(StandardCharsets.UTF_8);
         String mergedOid = Repository.INSTANCE.getDatabase().store(new Blob(merged));
-        return new MergeResult<>(mergedOid, false);
-    }
-
-    private byte[] buildConflictBlob(byte[] left, byte[] right) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        out.write("<<<<<<< HEAD\n".getBytes(StandardCharsets.UTF_8));
-        out.write(left);
-        if (left.length == 0 || left[left.length - 1] != '\n') {
-            out.write('\n');
-        }
-        out.write("=======\n".getBytes(StandardCharsets.UTF_8));
-        out.write(right);
-        if (right.length == 0 || right[right.length - 1] != '\n') {
-            out.write('\n');
-        }
-        out.write((">>>>>>> " + mergeRevisionName + "\n").getBytes(StandardCharsets.UTF_8));
-        return out.toByteArray();
+        return new MergeResult<>(mergedOid, !diff3.hasConflicts());
     }
 
     private void applyConflictsToIndex() throws IOException {

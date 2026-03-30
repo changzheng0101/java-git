@@ -16,12 +16,16 @@ class DiffUtilsTest {
         return Arrays.asList(s);
     }
 
+    private static List<DiffUtils.Line> nl(List<String> contents) {
+        return DiffUtils.numberedLines(contents);
+    }
+
     @Test
     @DisplayName("两段相同文本 diff 结果全为 EQL")
     void diff_identical_returnsAllEql() {
         List<String> a = lines("a\n", "b\n", "c\n");
         List<String> b = lines("a\n", "b\n", "c\n");
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(a, b);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(a), nl(b));
         assertThat(result).hasSize(3);
         assertThat(result).allMatch(e -> e.getType() == DiffUtils.EditType.EQL);
         assertThat(result.get(0).getLine()).isEqualTo("a\n");
@@ -34,7 +38,7 @@ class DiffUtilsTest {
     void diff_deletionAtStart() {
         List<String> doc = lines("the\n", "quick\n", "brown\n", "fox\n", "jumps\n", "over\n", "the\n", "lazy\n", "dog\n");
         List<String> changed = lines("quick\n", "brown\n", "fox\n", "jumps\n", "over\n", "the\n", "lazy\n", "dog\n");
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(doc, changed);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(doc), nl(changed));
         assertThat(result).isNotEmpty();
         assertThat(result.get(0).getType()).isEqualTo(DiffUtils.EditType.DEL);
         assertThat(result.get(0).getLine()).isEqualTo("the\n");
@@ -45,7 +49,7 @@ class DiffUtilsTest {
     void diff_insertionAtStart() {
         List<String> doc = lines("the\n", "quick\n", "brown\n", "fox\n");
         List<String> changed = lines("so\n", "the\n", "quick\n", "brown\n", "fox\n");
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(doc, changed);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(doc), nl(changed));
         assertThat(result).isNotEmpty();
         assertThat(result.get(0).getType()).isEqualTo(DiffUtils.EditType.INS);
         assertThat(result.get(0).getLine()).isEqualTo("so\n");
@@ -56,7 +60,7 @@ class DiffUtilsTest {
     void diff_changeInMiddle() {
         List<String> doc = lines("the\n", "quick\n", "brown\n", "fox\n", "jumps\n", "over\n", "the\n", "lazy\n", "dog\n");
         List<String> changed = lines("the\n", "quick\n", "brown\n", "fox\n", "leaps\n", "right\n", "over\n", "the\n", "lazy\n", "dog\n");
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(doc, changed);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(doc), nl(changed));
         List<DiffUtils.Edit> delAndIns = result.stream()
                 .filter(e -> e.getType() == DiffUtils.EditType.DEL || e.getType() == DiffUtils.EditType.INS)
                 .collect(Collectors.toList());
@@ -70,7 +74,7 @@ class DiffUtilsTest {
     void diff_multipleChanges() {
         List<String> doc = lines("the\n", "quick\n", "brown\n", "fox\n", "jumps\n", "over\n", "the\n", "lazy\n", "dog\n");
         List<String> changed = lines("the\n", "brown\n", "fox\n", "jumps\n", "over\n", "the\n", "lazy\n", "cat\n");
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(doc, changed);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(doc), nl(changed));
         assertThat(result).anyMatch(e -> e.getType() == DiffUtils.EditType.DEL && e.getLine().equals("quick\n"));
         assertThat(result).anyMatch(e -> e.getType() == DiffUtils.EditType.DEL && e.getLine().equals("dog\n"));
         assertThat(result).anyMatch(e -> e.getType() == DiffUtils.EditType.INS && e.getLine().equals("cat\n"));
@@ -95,7 +99,7 @@ class DiffUtilsTest {
     void diff_emptyA_allIns() {
         List<String> a = lines();
         List<String> b = lines("x\n", "y\n");
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(a, b);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(a), nl(b));
         assertThat(result).hasSize(2);
         assertThat(result).allMatch(e -> e.getType() == DiffUtils.EditType.INS);
     }
@@ -105,7 +109,7 @@ class DiffUtilsTest {
     void diff_emptyB_allDel() {
         List<String> a = lines("x\n", "y\n");
         List<String> b = lines();
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(a, b);
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(a), nl(b));
         assertThat(result).hasSize(2);
         assertThat(result).allMatch(e -> e.getType() == DiffUtils.EditType.DEL);
     }
@@ -113,15 +117,15 @@ class DiffUtilsTest {
     @Test
     @DisplayName("Edit.toString 格式：空格/+/− 加行内容")
     void edit_toString_format() {
-        assertThat(new DiffUtils.Edit(DiffUtils.EditType.EQL, "a\n").toString()).isEqualTo(" a\n");
-        assertThat(new DiffUtils.Edit(DiffUtils.EditType.INS, "b\n").toString()).isEqualTo("+b\n");
-        assertThat(new DiffUtils.Edit(DiffUtils.EditType.DEL, "c\n").toString()).isEqualTo("-c\n");
+        assertThat(new DiffUtils.Edit(DiffUtils.EditType.EQL, new DiffUtils.Line(0, "a\n")).toString()).isEqualTo(" a\n");
+        assertThat(new DiffUtils.Edit(DiffUtils.EditType.INS, new DiffUtils.Line(1, "b\n")).toString()).isEqualTo("+b\n");
+        assertThat(new DiffUtils.Edit(DiffUtils.EditType.DEL, new DiffUtils.Line(2, "c\n")).toString()).isEqualTo("-c\n");
     }
 
     @Test
     @DisplayName("两段都为空：结果为空列表")
     void diff_bothEmpty_returnsEmpty() {
-        List<DiffUtils.Edit> result = DiffUtils.diffLines(lines(), lines());
+        List<DiffUtils.Edit> result = DiffUtils.diffLines(nl(lines()), nl(lines()));
         assertThat(result).isEmpty();
     }
 

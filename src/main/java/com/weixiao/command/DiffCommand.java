@@ -270,9 +270,9 @@ public class DiffCommand extends BaseCommand {
     }
 
     private void printDiffBody(String oldContent, String newContent, boolean color) {
-        List<String> a = oldContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(oldContent);
-        List<String> b = newContent.isEmpty() ? Collections.emptyList() : DiffUtils.lines(newContent);
-        List<DiffUtils.Edit> edits = DiffUtils.diff(a, b);
+        List<DiffUtils.Line> a = DiffUtils.lines(oldContent);
+        List<DiffUtils.Line> b = DiffUtils.lines(newContent);
+        List<DiffUtils.Edit> edits = DiffUtils.diffLines(a, b);
 
         if (edits.isEmpty() || (a.isEmpty() && b.isEmpty())) return;
 
