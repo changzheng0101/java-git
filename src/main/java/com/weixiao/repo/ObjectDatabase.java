@@ -140,6 +140,21 @@ public final class ObjectDatabase {
     }
 
     /**
+     * 读取 blob 的原始内容为 UTF-8 字符串。
+     * {@code oid} 为 null 时返回空字符串；对象存在但类型非 blob 时返回空字符串；对象不存在时 {@link #load} 抛出 IOException。
+     */
+    public String readBlobUtf8(String oid) throws IOException {
+        if (oid == null) {
+            return "";
+        }
+        GitObject raw = load(oid);
+        if (!"blob".equals(raw.getType())) {
+            return "";
+        }
+        return new String(raw.toBytes(), java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /**
      * 按 oid 加载 commit 对象，使用成员缓存避免重复加载；不存在或类型非 commit 时返回 null。
      */
     public Commit loadCommit(String commitId) {

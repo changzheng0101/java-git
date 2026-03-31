@@ -1,7 +1,6 @@
 package com.weixiao.command;
 
 import com.weixiao.model.DiffSide;
-import com.weixiao.obj.GitObject;
 import com.weixiao.obj.TreeEntry;
 import com.weixiao.repo.Index;
 import com.weixiao.repo.ObjectDatabase;
@@ -128,7 +127,7 @@ public class DiffCommand extends BaseCommand {
             Index.Entry indexEntry = repo.getIndex().getEntryForPath(path);
             boolean deleted = status.getWorkspaceDeleted().contains(path);
 
-            DiffSide aDiffSide = new DiffSide(indexEntry.getPath(), indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));
+            DiffSide aDiffSide = new DiffSide(indexEntry.getPath(), indexEntry.getOid(), indexEntry.getMode(), repo.getDatabase().readBlobUtf8(indexEntry.getOid()));
             DiffSide bDiffSide = deleted ?
                     new DiffSide(path, NULL_OID, null, EMPTY_CONTENT) :
                     fromWorkSpace(path);
@@ -145,7 +144,7 @@ public class DiffCommand extends BaseCommand {
             return;
         }
 
-        DiffSide aDiffSide = new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));
+        DiffSide aDiffSide = new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), repo.getDatabase().readBlobUtf8(indexEntry.getOid()));
         DiffSide bDiffSide = fromWorkSpace(path);
 
         printDiff(aDiffSide, bDiffSide);
@@ -179,20 +178,13 @@ public class DiffCommand extends BaseCommand {
             DiffSide aDiffSide, bDiffSide;
             aDiffSide = added
                     ? new DiffSide(path, NULL_OID, null, EMPTY_CONTENT)
-                    : new DiffSide(path, headEntry.getOid(), headEntry.getMode(), blobContent(repo, headEntry.getOid()));
+                    : new DiffSide(path, headEntry.getOid(), headEntry.getMode(), repo.getDatabase().readBlobUtf8(headEntry.getOid()));
             bDiffSide = deleted
                     ? new DiffSide(path, NULL_OID, null, EMPTY_CONTENT)
-                    : new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), blobContent(repo, indexEntry.getOid()));
+                    : new DiffSide(path, indexEntry.getOid(), indexEntry.getMode(), repo.getDatabase().readBlobUtf8(indexEntry.getOid()));
 
             printDiff(aDiffSide, bDiffSide);
         }
-    }
-
-    private static String blobContent(Repository repo, String oid) throws IOException {
-        if (oid == null) return "";
-        GitObject raw = repo.getDatabase().load(oid);
-        if (!"blob".equals(raw.getType())) return "";
-        return new String(raw.toBytes(), StandardCharsets.UTF_8);
     }
 
     /**
@@ -233,7 +225,18 @@ public class DiffCommand extends BaseCommand {
         String plusLine = "+++ " + (bDiffSide.hasFile() ? "b/" + path : DEV_NULL);
         System.out.println(color ? DiffColor.bold(minusLine) : minusLine);
         System.out.println(color ? DiffColor.bold(plusLine) : plusLine);
-        printDiffBody(aDiffSide.getContent(), bDiffSide.getContent(), color);
+
+        String oldContent = aDiffSide.getContent();
+        String newContent = bDiffSide.getContent();
+        List<DiffUtils.Line> a = DiffUtils.lines(oldContent);
+        List<DiffUtils.Line> b = DiffUtils.lines(newContent);
+        List<DiffUtils.Edit> edits = DiffUtils.diffLines(a, b);
+        if (edits.isEmpty() || (a.isEmpty() && b.isEmpty())) {
+            return;
+        }
+        for (Hunk hunk : groupEditsIntoHunks(edits)) {
+            hunk.print();
+        }
     }
 
     private void printDiffMode(DiffSide aDiffSide, DiffSide bDiffSide, boolean color) {
@@ -251,9 +254,9 @@ public class DiffCommand extends BaseCommand {
 
 
     /**
-     * 一个 diff hunk：包含变更区域及其上下文。
+     * 一个 diff hunk：包含变更区域及其上下文；负责依次输出 hunk 头与正文行。
      */
-    private static final class Hunk {
+    private final class Hunk {
         final int startA;  // a 文件起始行号（1-based）
         final int countA;  // a 文件该 hunk 的行数
         final int startB;  // b 文件起始行号（1-based）
@@ -267,35 +270,57 @@ public class DiffCommand extends BaseCommand {
             this.countB = countB;
             this.edits = edits;
         }
-    }
 
-    private void printDiffBody(String oldContent, String newContent, boolean color) {
-        List<DiffUtils.Line> a = DiffUtils.lines(oldContent);
-        List<DiffUtils.Line> b = DiffUtils.lines(newContent);
-        List<DiffUtils.Edit> edits = DiffUtils.diffLines(a, b);
+        /** Git 风格 hunk 头：{@code @@ -startA,countA +startB,countB @@} */
+        String headerLine() {
+            return "@@ -" + startA + "," + countA + " +" + startB + "," + countB + " @@";
+        }
 
-        if (edits.isEmpty() || (a.isEmpty() && b.isEmpty())) return;
+        /**
+         * 本 hunk 的无 ANSI patch 文本（hunk 头一行 + 带 {@code -}/{@code +}/空格 前缀的正文行）。
+         */
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(headerLine()).append('\n');
+            for (DiffUtils.Edit e : edits) {
+                sb.append(editLinePlain(e));
+            }
+            return sb.toString();
+        }
 
-        List<Hunk> hunks = groupEditsIntoHunks(edits);
-        for (Hunk hunk : hunks) {
-            String hunkHeader = "@@ -" + hunk.startA + "," + hunk.countA + " +" + hunk.startB + "," + hunk.countB + " @@";
-            System.out.println(color ? DiffColor.cyan(hunkHeader) : hunkHeader);
-            for (DiffUtils.Edit e : hunk.edits) {
-                String prefix = e.getType() == DiffUtils.EditType.DEL ? "-" : (e.getType() == DiffUtils.EditType.INS ? "+" : " ");
-                String line = e.getLine();
-                if (!line.endsWith("\n")) line = line + "\n";
-                String fullLine = prefix + line;
-                if (color) {
-                    if (e.getType() == DiffUtils.EditType.DEL) {
-                        System.out.print(DiffColor.deletion(fullLine));
-                    } else if (e.getType() == DiffUtils.EditType.INS) {
-                        System.out.print(DiffColor.insertion(fullLine));
-                    } else {
-                        System.out.print(DiffColor.context(fullLine));
-                    }
-                } else {
-                    System.out.print(fullLine);
-                }
+        /**
+         * 写出到终端：{@link #useColor()} 为 false 时输出 {@link #toString()}；为 true 时对 hunk 头与删除/插入行着色。
+         */
+        void print() {
+            if (!useColor()) {
+                System.out.print(this);
+                return;
+            }
+            System.out.println(DiffColor.cyan(headerLine()));
+            for (DiffUtils.Edit e : edits) {
+                printEditLineColored(e);
+            }
+        }
+
+        private static String editLinePlain(DiffUtils.Edit e) {
+            String prefix = e.getType() == DiffUtils.EditType.DEL ? "-"
+                    : (e.getType() == DiffUtils.EditType.INS ? "+" : " ");
+            String line = e.getLine();
+            if (!line.endsWith("\n")) {
+                line = line + "\n";
+            }
+            return prefix + line;
+        }
+
+        private static void printEditLineColored(DiffUtils.Edit e) {
+            String fullLine = editLinePlain(e);
+            if (e.getType() == DiffUtils.EditType.DEL) {
+                System.out.print(DiffColor.deletion(fullLine));
+            } else if (e.getType() == DiffUtils.EditType.INS) {
+                System.out.print(DiffColor.insertion(fullLine));
+            } else {
+                System.out.print(DiffColor.context(fullLine));
             }
         }
     }

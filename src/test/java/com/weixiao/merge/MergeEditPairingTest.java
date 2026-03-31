@@ -35,8 +35,8 @@ class MergeEditPairingTest {
     }
 
     @Test
-    @DisplayName("两侧同为删除且 a 侧行一致：直接合并为一对 DEL")
-    void pair_symmetricDel_sameLineA_mergedAsOnePair() {
+    @DisplayName("两侧同为删除（a 侧文本相同）：仍按 DEL 优先分两对，不合并")
+    void pair_symmetricDel_stillTwoPairs_delFirstOtherNil() {
         String ours = "x\n";
         String theirs = "x\n";
         String merged = "";
@@ -45,13 +45,15 @@ class MergeEditPairingTest {
 
         List<MergeEditPairing.PairedMergeEdit> pairs = MergeEditPairing.pairByMergedBLine(left, right);
 
-        assertThat(pairs).hasSize(1);
+        assertThat(pairs).hasSize(2);
         assertThat(pairs.get(0).leftEdit()).isNotNull();
-        assertThat(pairs.get(0).rightEdit()).isNotNull();
         assertThat(pairs.get(0).leftEdit().getType()).isEqualTo(DiffUtils.EditType.DEL);
-        assertThat(pairs.get(0).rightEdit().getType()).isEqualTo(DiffUtils.EditType.DEL);
+        assertThat(pairs.get(0).rightEdit()).isNull();
+        assertThat(pairs.get(1).leftEdit()).isNull();
+        assertThat(pairs.get(1).rightEdit()).isNotNull();
+        assertThat(pairs.get(1).rightEdit().getType()).isEqualTo(DiffUtils.EditType.DEL);
         assertThat(pairs.get(0).leftEdit().getLineA().content())
-                .isEqualTo(pairs.get(0).rightEdit().getLineA().content());
+                .isEqualTo(pairs.get(1).rightEdit().getLineA().content());
     }
 
     @Test

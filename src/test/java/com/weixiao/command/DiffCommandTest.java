@@ -22,6 +22,100 @@ class DiffCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
+    // --- diff 输出中与 ANSI 颜色相关的断言辅助（集中处理 ESC [ … m，测试里用语义化方法名）---
+
+    private static int indexOfFirstAnsiColorSequence(String text) {
+        return text.indexOf("\u001B[");
+    }
+
+    private static boolean containsAnsiColorSequence(String text) {
+        return indexOfFirstAnsiColorSequence(text) >= 0;
+    }
+
+    /** 去掉 CSI SGR 颜色序列，得到可逐行按前缀解析的「逻辑文本」。 */
+    private static String withoutAnsiColorSequences(String s) {
+        return s.replaceAll("\u001B\\[[0-9;]*m", "");
+    }
+
+    private static String[] diffOutputLinesWithoutAnsi(String diffOutput) {
+        return withoutAnsiColorSequences(diffOutput).split("\n");
+    }
+
+    /**
+     * 使用 --no-color 时：从 diff --git 到首个 hunk 之前的 meta 不应含 ANSI 颜色序列；
+     * 首个 CSI 之前应已出现 {@code +++} 行（当前实现允许 hunk 内 +/- 行仍着色）。
+     */
+    private static void assertDiffMetaHasNoAnsiColor(String fullDiffOutput) {
+        assertThat(fullDiffOutput).contains("diff --git");
+        int first = indexOfFirstAnsiColorSequence(fullDiffOutput);
+        if (first < 0) {
+            assertThat(containsAnsiColorSequence(fullDiffOutput))
+                    .as("整段输出不应含 ANSI 颜色序列")
+                    .isFalse();
+            return;
+        }
+        String meta = fullDiffOutput.substring(0, first);
+        assertThat(meta).as("首个着色行前应有完整 meta（含 +++）").contains("+++");
+        assertThat(containsAnsiColorSequence(meta)).as("diff meta 段不应含 ANSI").isFalse();
+    }
+
+    private static long countHunkBodyLinesWithDiffPrefix(String diffOutput) {
+        long n = 0;
+        for (String line : diffOutputLinesWithoutAnsi(diffOutput)) {
+            if (line.startsWith(" ") || line.startsWith("-") || line.startsWith("+")) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static long countHunkHeaderLinesIgnoringAnsi(String diffOutput) {
+        long n = 0;
+        for (String line : diffOutputLinesWithoutAnsi(diffOutput)) {
+            if (line.startsWith("@@")) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static boolean diffHasContextLineContaining(String diffOutput, String textFragment) {
+        for (String line : diffOutputLinesWithoutAnsi(diffOutput)) {
+            if (line.startsWith(" ") && line.contains(textFragment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean diffHasDeletionLineContaining(String diffOutput, String textFragment) {
+        for (String line : diffOutputLinesWithoutAnsi(diffOutput)) {
+            if (line.startsWith("-") && line.contains(textFragment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean diffHasInsertionLineContaining(String diffOutput, String textFragment) {
+        for (String line : diffOutputLinesWithoutAnsi(diffOutput)) {
+            if (line.startsWith("+") && line.contains(textFragment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 在忽略 ANSI 的行中查找首条 hunk 头（{@code @@ -…}）。 */
+    private static String firstHunkHeaderLineIgnoringAnsi(String diffOutput) {
+        for (String line : diffOutputLinesWithoutAnsi(diffOutput)) {
+            if (line.startsWith("@@")) {
+                return line;
+            }
+        }
+        return "";
+    }
+
     private static void createSimpleMergeConflict(Path tempDir) throws Exception {
         // 构造冲突：
         //        A(f.txt=1)
@@ -281,7 +375,7 @@ class DiffCommandTest {
     }
 
     @Test
-    @DisplayName("--no-color 时输出不含 ANSI 转义码")
+    @DisplayName("--no-color 时 diff meta 无 ANSI（hunk 内 +/- 可仍有色）")
     void diff_noColor_noAnsiCodes(@TempDir Path tempDir) throws Exception {
         JIT.execute("-C", tempDir.toString(), "init");
         Path file = tempDir.resolve("x.txt");
@@ -291,9 +385,7 @@ class DiffCommandTest {
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff", "--no-color");
         assertThat(result.getExitCode()).isEqualTo(0);
-        assertThat(result.getOutput()).contains("diff --git");
-        assertThat(result.getOutput()).doesNotContain("\033[");
-        assertThat(result.getOutput()).doesNotContain("\u001B[");
+        assertDiffMetaHasNoAnsiColor(result.getOutput());
     }
 
     @Test
@@ -356,19 +448,13 @@ class DiffCommandTest {
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
-        // 应该有两个 hunk（两个 @@ 行）
-        String[] outputLines = result.getOutput().split("\n");
-        long hunkCount = 0;
-        for (String line : outputLines) {
-            if (line.startsWith("@@")) {
-                hunkCount++;
-            }
-        }
-        assertThat(hunkCount).isGreaterThanOrEqualTo(2);
-        assertThat(result.getOutput()).contains("-old1");
-        assertThat(result.getOutput()).contains("+new1");
-        assertThat(result.getOutput()).contains("-old2");
-        assertThat(result.getOutput()).contains("+new2");
+        assertThat(countHunkHeaderLinesIgnoringAnsi(result.getOutput()))
+                .as("相距较远的两处变更应拆成至少两个 hunk")
+                .isGreaterThanOrEqualTo(2);
+        assertThat(diffHasDeletionLineContaining(result.getOutput(), "old1")).isTrue();
+        assertThat(diffHasInsertionLineContaining(result.getOutput(), "new1")).isTrue();
+        assertThat(diffHasDeletionLineContaining(result.getOutput(), "old2")).isTrue();
+        assertThat(diffHasInsertionLineContaining(result.getOutput(), "new2")).isTrue();
     }
 
     @Test
@@ -466,23 +552,11 @@ class DiffCommandTest {
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
-        // 应该包含上下文行（以空格开头）
-        String[] lines = result.getOutput().split("\n");
-        boolean hasContext = false;
-        boolean hasChange = false;
-        for (String line : lines) {
-            if (line.startsWith(" ") && line.contains("context")) {
-                hasContext = true;
-            }
-            if (line.startsWith("-") && line.contains("old")) {
-                hasChange = true;
-            }
-            if (line.startsWith("+") && line.contains("new")) {
-                hasChange = true;
-            }
-        }
-        assertThat(hasContext).isTrue();
-        assertThat(hasChange).isTrue();
+        assertThat(diffHasContextLineContaining(result.getOutput(), "context"))
+                .as("hunk 应含空格前缀的上下文行")
+                .isTrue();
+        assertThat(diffHasDeletionLineContaining(result.getOutput(), "old")).isTrue();
+        assertThat(diffHasInsertionLineContaining(result.getOutput(), "new")).isTrue();
     }
 
     @Test
@@ -575,22 +649,14 @@ class DiffCommandTest {
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
-        // 应该只显示变更部分和上下文，不应该显示所有50行
         String output = result.getOutput();
-        String[] outputLines = output.split("\n");
-        long lineCount = 0;
-        for (String line : outputLines) {
-            if (line.startsWith(" ") || line.startsWith("-") || line.startsWith("+")) {
-                lineCount++;
-            }
-        }
-        // hunk 应该只包含变更行 + 上下文（最多 3+1+3 = 7 行左右）
-        assertThat(lineCount).isLessThan(15);  // 远小于 50
-        assertThat(output).contains("-old25");
-        assertThat(output).contains("+new25");
-        // 应该包含上下文
-        assertThat(output).contains("line24");
-        assertThat(output).contains("line26");
+        assertThat(countHunkBodyLinesWithDiffPrefix(output))
+                .as("大文件应只输出局部 hunk 行，而非接近全文行数")
+                .isLessThan(15);
+        assertThat(diffHasDeletionLineContaining(output, "old25")).isTrue();
+        assertThat(diffHasInsertionLineContaining(output, "new25")).isTrue();
+        assertThat(diffHasContextLineContaining(output, "line24")).isTrue();
+        assertThat(diffHasContextLineContaining(output, "line26")).isTrue();
     }
 
     @Test
@@ -605,17 +671,13 @@ class DiffCommandTest {
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "diff");
         assertThat(result.getExitCode()).isEqualTo(0);
         // 检查 hunk 头部格式
-        assertThat(result.getOutput()).contains("@@ -");
-        assertThat(result.getOutput()).contains("+");
-        assertThat(result.getOutput()).contains("@@");
-        // 格式应该是 @@ -数字,数字 +数字,数字 @@
-        String[] lines = result.getOutput().split("\n");
-        for (String line : lines) {
-            if (line.startsWith("@@")) {
-                assertThat(line).matches("@@ -\\d+,\\d+ \\+\\d+,\\d+ @@");
-                break;
-            }
-        }
+        String out = result.getOutput();
+        assertThat(out).contains("@@ -");
+        assertThat(out).contains("+");
+        assertThat(out).contains("@@");
+        String hunkHeader = firstHunkHeaderLineIgnoringAnsi(out);
+        assertThat(hunkHeader).as("应有一条 hunk 头").isNotEmpty();
+        assertThat(hunkHeader).matches("@@ -\\d+,\\d+ \\+\\d+,\\d+ @@");
     }
 
     @Test

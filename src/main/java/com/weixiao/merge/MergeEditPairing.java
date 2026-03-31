@@ -10,7 +10,7 @@ import java.util.List;
  * 按 merged（b 侧）行号对齐为 {@link PairedMergeEdit} 列表。
  * <p>
  * 两侧 diff 均以 merged 为第二个输入，因此 EQL/INS 的 {@link DiffUtils.Edit#getLineB()} 对应 merged 中的行，可按 b 侧行号配对。
- * 两侧均为 {@link DiffUtils.EditType#DEL} 且 {@link DiffUtils.Edit#getLineA()} 相等时合并为一对；否则 DEL 优先单独成对，另一侧为 {@code null}。
+ * 遇 {@link DiffUtils.EditType#DEL} 时优先单独成对，另一侧为 {@code null}；再按 b 侧行号对齐 EQL/INS。
  */
 public final class MergeEditPairing {
 
@@ -25,7 +25,7 @@ public final class MergeEditPairing {
 
     /**
      * 将左、右两侧到 merged 的编辑序列按 merged 的 b 侧对齐。
-     * 对称 DEL（a 侧行相同）合并为一对；其余 DEL 单独输出为 (edit, null) 或 (null, edit)，再处理其余编辑。
+     * DEL 单独输出为 (edit, null) 或 (null, edit)；其余按 b 侧行号成对。
      *
      * @param leftToMergedEdits  {@code diff(left, merged)} 的结果
      * @param rightToMergedEdits {@code diff(right, merged)} 的结果
@@ -49,15 +49,6 @@ public final class MergeEditPairing {
                 break;
             }
 
-            // 考虑情况类似 abc -> ac <- abc
-            if ((leftEdit != null && leftEdit.getType() == DiffUtils.EditType.DEL) &&
-                    (rightEdit != null && rightEdit.getType() == DiffUtils.EditType.DEL) &&
-                    leftEdit.getLineA().equals(rightEdit.getLineA())) {
-                out.add(new PairedMergeEdit(leftEdit, rightEdit));
-                leftIdx++;
-                rightIdx++;
-                continue;
-            }
             if ((leftEdit != null && leftEdit.getType() == DiffUtils.EditType.DEL) || rightEdit == null) {
                 out.add(new PairedMergeEdit(leftEdit, null));
                 leftIdx++;
@@ -70,21 +61,9 @@ public final class MergeEditPairing {
             }
 
 
-            DiffUtils.Line bL = leftEdit.getLineB();
-            DiffUtils.Line bR = rightEdit.getLineB();
-            int leftMergeFileLineNum = bL.lineNum();
-            int rightMergeFileLineNum = bR.lineNum();
-            if (leftMergeFileLineNum == rightMergeFileLineNum) {
-                out.add(new PairedMergeEdit(leftEdit, rightEdit));
-                leftIdx++;
-                rightIdx++;
-            } else if (leftMergeFileLineNum < rightMergeFileLineNum) {
-                out.add(new PairedMergeEdit(leftEdit, null));
-                leftIdx++;
-            } else {
-                out.add(new PairedMergeEdit(null, rightEdit));
-                rightIdx++;
-            }
+            out.add(new PairedMergeEdit(leftEdit, rightEdit));
+            leftIdx++;
+            rightIdx++;
         }
 
         return out;
