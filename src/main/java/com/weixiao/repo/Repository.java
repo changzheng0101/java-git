@@ -1,5 +1,6 @@
 package com.weixiao.repo;
 
+import com.weixiao.config.JitConfig;
 import com.weixiao.model.StatusResult;
 import com.weixiao.obj.Blob;
 import com.weixiao.obj.Commit;
@@ -55,6 +56,10 @@ public final class Repository {
      * 暂存区，用于 add/commit
      */
     private final Index index;
+    /**
+     * 本仓库唯一持有的 {@code .git/config} 访问对象；未 {@link #find(Path)} 前为 null。
+     */
+    private JitConfig jitConfig;
 
     /**
      * 单例构造，初始时各属性为 null；通过 {@link #find(Path)} 查找成功后会被 {@link #init(Path)} 填充。
@@ -66,6 +71,7 @@ public final class Repository {
         this.refs = new Refs();
         this.workspace = new Workspace();
         this.index = new Index();
+        this.jitConfig = null;
     }
 
     /**
@@ -78,9 +84,12 @@ public final class Repository {
         this.refs.setGitDir(this.gitDir);
         this.workspace.setRoot(this.root);
         this.index.setGitDir(this.gitDir);
+        this.jitConfig = new JitConfig(this.gitDir.resolve("config"));
     }
 
-    /** 未找到仓库时打印到 stderr 的提示。 */
+    /**
+     * 未找到仓库时打印到 stderr 的提示。
+     */
     public static final String FATAL_NOT_A_REPO = "fatal: not a jit repository (or any of the parent directories): .git";
 
     /**

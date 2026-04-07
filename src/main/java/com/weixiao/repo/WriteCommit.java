@@ -1,10 +1,14 @@
 package com.weixiao.repo;
 
+import com.weixiao.config.JitConfig;
 import com.weixiao.obj.Commit;
 import lombok.experimental.UtilityClass;
 
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 写入 commit 的工具类：基于当前 index 构建 tree 并提交。
@@ -25,9 +29,24 @@ public final class WriteCommit {
         return newCommitOid;
     }
 
+    /**
+     * 与 Git {@code current_author} 类似：{@code GIT_AUTHOR_*} 优先，否则 config {@code user.name} / {@code user.email}（经 {@link JitConfig#get(String...)} 合并三层），再回退到系统用户名与 {@code name@local}。
+     */
     private static String formatAuthor() {
-        String user = System.getProperty("user.name", "user");
-        long sec = System.currentTimeMillis() / 1000;
-        return user + " <" + user + "@local> " + sec + " +0000";
+        JitConfig cfg = Repository.INSTANCE.getJitConfig();
+        String user = Optional.ofNullable(System.getProperty("user.name"))
+                .orElseGet(
+                        () -> Optional.ofNullable(cfg.get("user", "user")).orElse("default_user").toString()
+                );
+        String email = Optional.ofNullable(System.getProperty("user.email"))
+                .orElseGet(() -> Optional.ofNullable(cfg.get("user", "email"))
+                        .orElse("default_user").toString());
+
+        OffsetDateTime now = OffsetDateTime.now();
+        long sec = now.toEpochSecond();
+        String tz = now.format(DateTimeFormatter.ofPattern("XX"));
+        return user + " <" + email + "> " + sec + " " + tz;
     }
+
+
 }
