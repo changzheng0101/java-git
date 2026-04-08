@@ -36,11 +36,10 @@ public final class WriteCommit {
         JitConfig cfg = Repository.INSTANCE.getJitConfig();
         String user = Optional.ofNullable(System.getProperty("user.name"))
                 .orElseGet(
-                        () -> Optional.ofNullable(cfg.get("user", "user")).orElse("default_user").toString()
+                        () -> cfg.get("user", "user").orElse("default_user").toString()
                 );
         String email = Optional.ofNullable(System.getProperty("user.email"))
-                .orElseGet(() -> Optional.ofNullable(cfg.get("user", "email"))
-                        .orElse("default_user").toString());
+                .orElseGet(() -> cfg.get("user", "email").orElse("default_email").toString());
 
         OffsetDateTime now = OffsetDateTime.now();
         long sec = now.toEpochSecond();

@@ -60,6 +60,10 @@ public final class Repository {
      * 本仓库唯一持有的 {@code .git/config} 访问对象；未 {@link #find(Path)} 前为 null。
      */
     private JitConfig jitConfig;
+    /**
+     * 本仓库唯一持有的 remotes（依赖 {@link #jitConfig}）；未 {@link #find(Path)} 前为 null。
+     */
+    private Remotes remotes;
 
     /**
      * 单例构造，初始时各属性为 null；通过 {@link #find(Path)} 查找成功后会被 {@link #init(Path)} 填充。
@@ -72,6 +76,7 @@ public final class Repository {
         this.workspace = new Workspace();
         this.index = new Index();
         this.jitConfig = null;
+        this.remotes = null;
     }
 
     /**
@@ -85,6 +90,7 @@ public final class Repository {
         this.workspace.setRoot(this.root);
         this.index.setGitDir(this.gitDir);
         this.jitConfig = new JitConfig(this.gitDir.resolve("config"));
+        this.remotes = new Remotes();
     }
 
     /**

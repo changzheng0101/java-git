@@ -36,7 +36,7 @@ public final class JitConfig {
     private static final Pattern SECTION_PAT = Pattern.compile("^\\[(\\w*)\\s*(\\\"(\\w*)\\\")?]");
 
     // ^\s*(\w*)\s*=\s*([\w|\.]*)
-    private static final Pattern VAR_PAT = Pattern.compile("^\\s*(\\w*)\\s*=\\s*([\\w|\\.]*)");
+    private static final Pattern VAR_PAT = Pattern.compile("^\\s*(\\w*)\\s*=\\s*(\\S*)");
     /**
      * 空行，或行首空白后以 # / ; 开头的整行注释。
      */
@@ -87,17 +87,19 @@ public final class JitConfig {
      * 获取key对应的configFile  local优先生效
      * 返回key对应的value
      */
-    public Object get(String... keys) {
+    @SuppressWarnings("unchecked")
+    public <T> Optional<T> get(String... keys) {
         List<ConfigLine> all = getAll(keys);
         if (all.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(all.get(all.size() - 1).getVariable().value());
+        return Optional.of((T) all.get(all.size() - 1).getVariable().value());
     }
 
-    public Object get(GitConfigScope scope, String... keys) {
+    @SuppressWarnings("unchecked")
+    public <T> Optional<T> get(GitConfigScope scope, String... keys) {
         JitConfigData jitConfigData = load(scope);
-        return jitConfigData.get(keys).map(configLine -> configLine.getVariable().value());
+        return jitConfigData.get(keys).map(configLine -> (T) configLine.getVariable().value());
     }
 
     /**
@@ -146,7 +148,7 @@ public final class JitConfig {
 
         Matcher sectionMatcher = SECTION_PAT.matcher(rawLine);
         if (sectionMatcher.find()) {
-            if (sectionMatcher.groupCount() == 3) {
+            if (sectionMatcher.group(3) != null) {
                 section = sectionMatcher.group(1) + "." + sectionMatcher.group(3);
             } else {
                 section = sectionMatcher.group(1);
@@ -168,17 +170,17 @@ public final class JitConfig {
         throw new RuntimeException("bad config line in file");
     }
 
+    public void saveConfigFile(GitConfigScope scope) {
+        Path configFilePath = configPaths.get(scope);
+        JitConfigData data = dataByScope.get(scope);
+        saveConfigFile(data, configFilePath);
+    }
+
     /**
      * 按 {@link Map} 的迭代顺序写出各节下的行；若需与读入顺序一致，应使用 {@link JitConfig#readConfigFile} 得到的数据或 {@link LinkedHashMap}。
      */
     public static void saveConfigFile(JitConfigData data, Path configFilePath) {
-        saveConfigFile(data.linesBySection(), configFilePath);
-    }
-
-    /**
-     * 按 {@link Map} 的迭代顺序写出各节下的行。
-     */
-    public static void saveConfigFile(Map<String, List<ConfigLine>> configLines, Path configFilePath) {
+        Map<String, List<ConfigLine>> configLines = data.linesBySection();
         try (BufferedWriter writer = Files.newBufferedWriter(configFilePath)) {
             for (Map.Entry<String, List<ConfigLine>> entry : configLines.entrySet()) {
                 for (ConfigLine configLine : entry.getValue()) {
@@ -189,4 +191,6 @@ public final class JitConfig {
             throw new RuntimeException("error saving config file", e);
         }
     }
+
+
 }

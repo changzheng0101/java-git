@@ -90,6 +90,13 @@ public final class JitConfigData {
 
 
     /**
+     * 从内存模型中整节删除（如 {@code remote.origin} 及其下所有行）。
+     */
+    public void removeEntireSection(String sectionKey) {
+        linesBySection.remove(sectionKey);
+    }
+
+    /**
      * 先移除所有的key  之后再插入一条
      */
     public void replaceAll(String[] keys, String value) {

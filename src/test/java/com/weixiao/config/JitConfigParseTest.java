@@ -145,7 +145,7 @@ class JitConfigParseTest {
         void section_header(String line, @TempDir Path dir) throws Exception {
             Map<String, List<ConfigLine>> config = JitConfig.readConfigFile(writeConfig(dir, "c", line)).linesBySection();
             String header = line.trim();
-            String sectionKey = header.substring(1, header.indexOf(']')) + ".null";
+            String sectionKey = header.substring(1, header.indexOf(']'));
             assertThat(config).containsKey(sectionKey);
             assertThat(config.get(sectionKey).get(0).getText().trim()).isEqualTo(header);
         }
@@ -167,9 +167,9 @@ class JitConfigParseTest {
         void section_then_key(@TempDir Path dir) throws Exception {
             Map<String, List<ConfigLine>> config =
                     JitConfig.readConfigFile(writeConfig(dir, "c", "[core]\nx=1\n")).linesBySection();
-            assertThat(config).containsKeys("core.null");
-            assertThat(config.get("core.null")).hasSize(2);
-            assertThat(config.get("core.null").get(1).getVariable()).isNotNull();
+            assertThat(config).containsKeys("core");
+            assertThat(config.get("core")).hasSize(2);
+            assertThat(config.get("core").get(1).getVariable()).isNotNull();
         }
 
         @Test
@@ -188,7 +188,7 @@ class JitConfigParseTest {
                     editor = emacs
                     """;
             JitConfigData data = JitConfig.readConfigFile(writeConfig(dir, "c", text));
-            assertThat(data.getAll("core", "null", "editor"))
+            assertThat(data.getAll("core", "editor"))
                     .extracting(l -> l.getVariable().value())
                     .containsExactly("vim", "emacs");
         }
@@ -203,7 +203,7 @@ class JitConfigParseTest {
             JitConfigData data = JitConfig.readConfigFile(writeConfig(dir, "c", text));
             assertThat(data.getAll("remote", "origin", "url"))
                     .extracting(l -> l.getVariable().value())
-                    .containsExactly("https", "https");
+                    .containsExactly("https://a.example/repo.git", "https://b.example/repo.git");
         }
 
         @Test
