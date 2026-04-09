@@ -8,7 +8,6 @@ import com.weixiao.config.JitConfigData;
 import lombok.AllArgsConstructor;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -39,22 +38,6 @@ public final class Remotes {
         return names;
     }
 
-    /**
-     * local 配置中该 remote 下全部 {@code fetch} 行解析为 {@link Refspec}。
-     */
-    public List<Refspec> getFetchRefspecs(String remoteName) {
-        JitConfigData data = Repository.INSTANCE.getJitConfig().load(GitConfigScope.LOCAL);
-        List<ConfigLine> lines = data.getAll("remote", remoteName, "fetch");
-        List<Refspec> out = new ArrayList<>();
-        for (ConfigLine line : lines) {
-            ConfigVariable v = line.getVariable();
-            if (v != null && v.value() != null) {
-                out.add(Refspec.parse(String.valueOf(v.value())));
-            }
-        }
-        return out;
-    }
-
     public Optional<String> getUrl(String remoteName) {
         return Repository.INSTANCE.getJitConfig().get(GitConfigScope.LOCAL, REMOTE_PREFIX + remoteName, "url");
     }
@@ -70,13 +53,6 @@ public final class Remotes {
         return getUrl(remoteName);
     }
 
-
-    private static String stringifyValue(Object v) {
-        if (v == null) {
-            return "";
-        }
-        return String.valueOf(v).trim();
-    }
 
     /**
      * 列出 remote；{@code verbose} 为真时每项输出两行 {@code (fetch)} / {@code (push)}，与 {@code git remote -v} 一致。
