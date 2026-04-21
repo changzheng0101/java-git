@@ -228,7 +228,7 @@ public final class Workspace {
      * 删除工作区中的文件或空目录；非空目录会抛出异常，调用方需先按子路径先删的顺序调用。
      */
     public void deletePath(String relativePath) throws IOException {
-        Path path = root.resolve(relativePath.replace('\\', '/')).normalize();
+        Path path = root.resolve(PathUtils.normalizePath(relativePath)).normalize();
         if (!path.startsWith(root)) {
             throw new IOException("path escapes workspace: " + relativePath);
         }
@@ -244,7 +244,7 @@ public final class Workspace {
      * 递归删除路径（文件或目录，类似 rm -rf）；不进入 .git。
      */
     public void rm_rf(String relativePath) throws IOException {
-        Path path = root.resolve(relativePath.replace('\\', '/')).normalize();
+        Path path = root.resolve(PathUtils.normalizePath(relativePath)).normalize();
         if (!path.startsWith(root)) {
             throw new IOException("path escapes workspace: " + relativePath);
         }

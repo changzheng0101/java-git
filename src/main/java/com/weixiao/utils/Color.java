@@ -7,7 +7,7 @@ import lombok.experimental.UtilityClass;
  * 颜色约定尽量与 Git 一致：
  * - 黄色：hash / oid
  * - 加粗：重要 meta 行
- * - 红：删除，绿：新增，青：hunk 头等（兼容 DiffColor）。
+ * - 红：删除，绿：新增，青：hunk 头等。
  */
 @UtilityClass
 public class Color {
@@ -56,4 +56,3 @@ public class Color {
         return line;
     }
 }
-

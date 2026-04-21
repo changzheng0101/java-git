@@ -1,7 +1,7 @@
 package com.weixiao.repo;
 
 import com.google.common.base.Strings;
-import com.weixiao.utils.Constants;
+import com.weixiao.utils.PathUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
@@ -271,7 +271,7 @@ public final class Refs {
             stream.filter(Files::isRegularFile)
                     .sorted()
                     .forEach(p -> {
-                        String name = headsDir.relativize(p).toString().replace(Constants.FILE_SEPARATOR, "/");
+                        String name = PathUtils.normalizePath(headsDir.relativize(p));
                         SysRef ref = new SysRef(REFS_HEADS + name);
                         String oid = readRef(ref);
                         if (!Strings.isNullOrEmpty(oid)) {

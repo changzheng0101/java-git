@@ -176,10 +176,11 @@ public final class Status {
         for (Path subPath : subPaths) {
             //  相对路径，类似  a/b
             Path relativePath = repo.getRoot().relativize(subPath);
-            if (repo.getIndex().tracked(relativePath.toString())) {
+            String normalizedPath = PathUtils.normalizePath(relativePath);
+            if (repo.getIndex().tracked(normalizedPath)) {
                 if (Files.isRegularFile(subPath)) {
                     workspaceFileMetaDataCache.put(
-                            relativePath.toString(),
+                            normalizedPath,
                             new WorkspaceFileMetaData(subPath, Files.size(subPath), Workspace.getFileMode(subPath), Workspace.getFileStat(subPath))
                     );
                 }
@@ -190,7 +191,7 @@ public final class Status {
                 if (Files.isDirectory(subPath) && PathUtils.containsOnlyEmptyDirectories(subPath)) {
                     continue;
                 }
-                result.getWorkspaceUntracked().add(Files.isDirectory(subPath) ? relativePath + "/" : relativePath.toString());
+                result.getWorkspaceUntracked().add(Files.isDirectory(subPath) ? normalizedPath + "/" : normalizedPath);
             }
         }
     }

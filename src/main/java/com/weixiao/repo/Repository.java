@@ -7,8 +7,6 @@ import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.obj.Tree;
 import com.weixiao.obj.TreeEntry;
-import com.weixiao.utils.CryptoUtils;
-import com.weixiao.utils.HexUtils;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -199,14 +197,6 @@ public final class Repository {
     }
 
     public static String computeBlobOid(byte[] data) {
-        Blob blob = new Blob(data);
-        byte[] body = blob.toBytes();
-        String header = blob.getType() + " " + body.length + "\0";
-        byte[] headerBytes = header.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] content = new byte[headerBytes.length + body.length];
-        System.arraycopy(headerBytes, 0, content, 0, headerBytes.length);
-        System.arraycopy(body, 0, content, headerBytes.length, body.length);
-        byte[] digest = CryptoUtils.sha1(content);
-        return HexUtils.bytesToHex(digest);
+        return ObjectDatabase.oidFor(new Blob(data));
     }
 }

@@ -7,7 +7,7 @@ import com.weixiao.repo.ObjectDatabase;
 import com.weixiao.repo.Repository;
 import com.weixiao.model.StatusResult;
 import com.weixiao.repo.Workspace;
-import com.weixiao.utils.DiffColor;
+import com.weixiao.utils.Color;
 import com.weixiao.utils.DiffUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -214,17 +214,17 @@ public class DiffCommand extends BaseCommand {
         boolean color = useColor();
 
         String metaLine = "diff --git a/" + path + " b/" + path;
-        System.out.println(color ? DiffColor.bold(metaLine) : metaLine);
+        System.out.println(color ? Color.bold(metaLine) : metaLine);
 
         printDiffMode(aDiffSide, bDiffSide, color);
         String modeSuffix = Objects.equals(aDiffSide.getMode(), bDiffSide.getMode()) ? (aDiffSide.getMode() != null ? aDiffSide.getMode() : "") : "";
         String indexLine = "index " + ObjectDatabase.shortOid(aDiffSide.getOid()) + ".." + ObjectDatabase.shortOid(bDiffSide.getOid()) + (modeSuffix.isEmpty() ? "" : " " + modeSuffix);
-        System.out.println(color ? DiffColor.bold(indexLine) : indexLine);
+        System.out.println(color ? Color.bold(indexLine) : indexLine);
 
         String minusLine = "--- " + (aDiffSide.hasFile() ? "a/" + path : DEV_NULL);
         String plusLine = "+++ " + (bDiffSide.hasFile() ? "b/" + path : DEV_NULL);
-        System.out.println(color ? DiffColor.bold(minusLine) : minusLine);
-        System.out.println(color ? DiffColor.bold(plusLine) : plusLine);
+        System.out.println(color ? Color.bold(minusLine) : minusLine);
+        System.out.println(color ? Color.bold(plusLine) : plusLine);
 
         String oldContent = aDiffSide.getContent();
         String newContent = bDiffSide.getContent();
@@ -242,13 +242,13 @@ public class DiffCommand extends BaseCommand {
     private void printDiffMode(DiffSide aDiffSide, DiffSide bDiffSide, boolean color) {
         if (bDiffSide.getMode() == null) {
             String s = "deleted file mode " + aDiffSide.getMode();
-            System.out.println(color ? DiffColor.bold(s) : s);
+            System.out.println(color ? Color.bold(s) : s);
         } else if (aDiffSide.getMode() == null) {
             String s = "new file mode " + bDiffSide.getMode();
-            System.out.println(color ? DiffColor.bold(s) : s);
+            System.out.println(color ? Color.bold(s) : s);
         } else if (!Objects.equals(aDiffSide.getMode(), bDiffSide.getMode())) {
-            System.out.println(color ? DiffColor.bold("old mode " + aDiffSide.getMode()) : "old mode " + aDiffSide.getMode());
-            System.out.println(color ? DiffColor.bold("new mode " + bDiffSide.getMode()) : "new mode " + bDiffSide.getMode());
+            System.out.println(color ? Color.bold("old mode " + aDiffSide.getMode()) : "old mode " + aDiffSide.getMode());
+            System.out.println(color ? Color.bold("new mode " + bDiffSide.getMode()) : "new mode " + bDiffSide.getMode());
         }
     }
 
@@ -297,7 +297,7 @@ public class DiffCommand extends BaseCommand {
                 System.out.print(this);
                 return;
             }
-            System.out.println(DiffColor.cyan(headerLine()));
+            System.out.println(Color.cyan(headerLine()));
             for (DiffUtils.Edit e : edits) {
                 printEditLineColored(e);
             }
@@ -316,11 +316,11 @@ public class DiffCommand extends BaseCommand {
         private static void printEditLineColored(DiffUtils.Edit e) {
             String fullLine = editLinePlain(e);
             if (e.getType() == DiffUtils.EditType.DEL) {
-                System.out.print(DiffColor.deletion(fullLine));
+                System.out.print(Color.deletion(fullLine));
             } else if (e.getType() == DiffUtils.EditType.INS) {
-                System.out.print(DiffColor.insertion(fullLine));
+                System.out.print(Color.insertion(fullLine));
             } else {
-                System.out.print(DiffColor.context(fullLine));
+                System.out.print(Color.context(fullLine));
             }
         }
     }

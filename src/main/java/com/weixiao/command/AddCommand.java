@@ -3,6 +3,7 @@ package com.weixiao.command;
 import com.weixiao.obj.Blob;
 import com.weixiao.repo.Index;
 import com.weixiao.repo.Workspace;
+import com.weixiao.utils.PathUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
@@ -104,7 +105,7 @@ public class AddCommand extends BaseCommand {
      * todo 考虑删除文件的情况，这时候执行add命令，其实是将对应删除的文件从index中移除
      */
     private void addFile(Path root, Path filePath) throws IOException {
-        String relative = root.relativize(filePath).toString().replace('\\', '/');
+        String relative = PathUtils.normalizePath(root.relativize(filePath));
         byte[] data = repo.getWorkspace().readFile(filePath);
         Blob blob = new Blob(data);
         String blobOid = repo.getDatabase().store(blob);

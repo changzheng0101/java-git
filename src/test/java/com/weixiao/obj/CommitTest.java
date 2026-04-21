@@ -59,6 +59,13 @@ class CommitTest {
         assertThat(s).contains("2023").matches(".*\\d{2}:\\d{2}:\\d{2}.*");
     }
 
+    @Test
+    @DisplayName("formatAuthorShortDate 格式化为短日期")
+    void formatAuthorShortDate_formatsIsoDate() {
+        assertThat(Commit.formatAuthorShortDate(AUTHOR_FULL)).matches("\\d{4}-\\d{2}-\\d{2}");
+        assertThat(Commit.formatAuthorShortDate("Name <email>")).isEmpty();
+    }
+
     @ParameterizedTest
     @NullAndEmptySource
     @DisplayName("formatAuthorDate null 或空返回空串")

@@ -8,9 +8,6 @@ import com.weixiao.repo.Repository;
 import com.weixiao.repo.SysRef;
 
 import java.io.IOException;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -107,7 +104,7 @@ public interface Revision {
                 String line = " " + shortOid + " " + obj.getType();
                 if ("commit".equals(obj.getType())) {
                     Commit commit = (Commit) obj;
-                    String shortDate = formatAuthorShortDate(commit.getAuthor());
+                    String shortDate = Commit.formatAuthorShortDate(commit.getAuthor());
                     String titleLine = Commit.firstLine(commit.getMessage());
                     line += " " + shortDate + " - " + titleLine;
                 }
@@ -115,25 +112,6 @@ public interface Revision {
             }
             String message = "short SHA1 " + name + " is ambiguous\nThe candidates are:\n" + String.join("\n", lines);
             return new RevisionParseException(message);
-        }
-
-        private static String formatAuthorShortDate(String author) {
-            if (author == null) {
-                return "";
-            }
-            String[] parts = author.split("\\s+");
-            for (String p : parts) {
-                if (p.length() == 10 && p.matches("\\d+")) {
-                    try {
-                        long ts = Long.parseLong(p);
-                        return Instant.ofEpochSecond(ts).atZone(ZoneId.systemDefault())
-                                .format(DateTimeFormatter.ISO_LOCAL_DATE);
-                    } catch (NumberFormatException ignored) {
-                        // ignore
-                    }
-                }
-            }
-            return "";
         }
 
     }

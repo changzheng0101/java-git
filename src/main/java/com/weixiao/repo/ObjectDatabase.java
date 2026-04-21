@@ -5,6 +5,7 @@ import com.weixiao.obj.Blob;
 import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.obj.Tree;
+import com.weixiao.utils.ArrayUtils;
 import com.weixiao.utils.CryptoUtils;
 import com.weixiao.utils.HexUtils;
 import lombok.Data;
@@ -54,14 +55,8 @@ public final class ObjectDatabase {
      * 格式：content = "type size\0body"，oid = SHA1(content)，写入 .git/objects/xx/yyyy...
      */
     public String store(GitObject object) throws IOException {
-        byte[] body = object.toBytes();
-        String header = object.getType() + " " + body.length + "\0";
-        byte[] headerBytes = header.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] content = new byte[headerBytes.length + body.length];
-        System.arraycopy(headerBytes, 0, content, 0, headerBytes.length);
-        System.arraycopy(body, 0, content, headerBytes.length, body.length);
-
-        String oid = HexUtils.bytesToHex(sha1(content));
+        byte[] content = objectContent(object);
+        String oid = oidForContent(content);
         Path objectPath = objectPath(oid);
 
         log.debug("store type={} oid={} path={}", object.getType(), oid, objectPath);
@@ -96,7 +91,7 @@ public final class ObjectDatabase {
         }
         byte[] compressed = Files.readAllBytes(p);
         byte[] content = inflate(compressed);
-        int nul = indexOf(content);
+        int nul = ArrayUtils.indexOf(content, (byte) 0);
         if (nul < 0) {
             throw new IOException("invalid object: " + oid);
         }
@@ -248,6 +243,30 @@ public final class ObjectDatabase {
     }
 
     /**
+     * 返回 Git loose object 的未压缩内容：{@code type size\0body}。
+     */
+    public static byte[] objectContent(GitObject object) {
+        byte[] body = object.toBytes();
+        String header = object.getType() + " " + body.length + "\0";
+        byte[] headerBytes = header.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] content = new byte[headerBytes.length + body.length];
+        System.arraycopy(headerBytes, 0, content, 0, headerBytes.length);
+        System.arraycopy(body, 0, content, headerBytes.length, body.length);
+        return content;
+    }
+
+    /**
+     * 计算 Git object id，即 {@code SHA1(type size\0body)} 的 40 位小写 hex。
+     */
+    public static String oidFor(GitObject object) {
+        return oidForContent(objectContent(object));
+    }
+
+    private static String oidForContent(byte[] content) {
+        return HexUtils.bytesToHex(CryptoUtils.sha1(content));
+    }
+
+    /**
      * 根据 40 字符 hex oid 得到 .git/objects/xx/yyyy... 路径（前 2 字符为子目录）。
      */
     private Path objectPath(String oid) {
@@ -255,13 +274,6 @@ public final class ObjectDatabase {
             throw new IllegalArgumentException("invalid oid: " + oid);
         }
         return objectsDir.resolve(oid.substring(0, 2)).resolve(oid.substring(2));
-    }
-
-    /**
-     * 计算输入字节的 SHA-1 摘要（20 字节）。
-     */
-    private static byte[] sha1(byte[] input) {
-        return CryptoUtils.sha1(input);
     }
 
     /**
@@ -288,15 +300,4 @@ public final class ObjectDatabase {
         }
     }
 
-    /**
-     * 在字节数组中查找第一个等于 b 的下标，未找到返回 -1。
-     */
-    private static int indexOf(byte[] a) {
-        for (int i = 0; i < a.length; i++) {
-            if (a[i] == (byte) 0) {
-                return i;
-            }
-        }
-        return -1;
-    }
 }

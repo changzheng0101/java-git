@@ -29,6 +29,9 @@ class ObjectDatabaseTest {
         ObjectDatabase db = new ObjectDatabase(gitDir.resolve("objects"));
         Blob blob = new Blob("hello".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String oid = db.store(blob);
+        assertThat(ObjectDatabase.oidFor(blob)).isEqualTo(oid);
+        assertThat(ObjectDatabase.objectContent(blob))
+                .startsWith("blob 5\0".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         assertThat(oid).hasSize(40);
         assertThat(oid).matches("[0-9a-f]{40}");
         var raw = db.load(oid);

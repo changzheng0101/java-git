@@ -131,7 +131,7 @@ public final class Index {
         System.arraycopy(raw, 0, content, 0, contentEnd);
         byte[] expectedChecksum = new byte[CHECKSUM_SIZE];
         System.arraycopy(raw, contentEnd, expectedChecksum, 0, CHECKSUM_SIZE);
-        byte[] actualChecksum = sha1(content);
+        byte[] actualChecksum = CryptoUtils.sha1(content);
         if (!MessageDigest.isEqual(expectedChecksum, actualChecksum)) {
             log.warn("index checksum mismatch, using emptyTree index");
             return;
@@ -236,16 +236,12 @@ public final class Index {
         }
 
         byte[] content = out.toByteArray();
-        byte[] checksum = sha1(content);
+        byte[] checksum = CryptoUtils.sha1(content);
         out.write(checksum);
 
         Path indexPath = gitDir.resolve(INDEX_FILE);
         Files.write(indexPath, out.toByteArray());
         log.debug("saved index entries={} checksum={}", entries.size(), HexUtils.bytesToHex(checksum));
-    }
-
-    private static byte[] sha1(byte[] input) {
-        return CryptoUtils.sha1(input);
     }
 
     /**

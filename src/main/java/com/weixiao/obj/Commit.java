@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -93,10 +94,9 @@ public final class Commit implements GitObject {
             return "";
         }
         String[] parts = author.split("\\s+");
-        for (int i = 0; i < parts.length; i++) {
-            if (parts[i].matches("\\d{9,}") && i > 0) {
-                return String.join(" ", java.util.Arrays.copyOfRange(parts, 0, i));
-            }
+        int timestampIndex = findTimestampIndex(parts);
+        if (timestampIndex > 0) {
+            return String.join(" ", java.util.Arrays.copyOfRange(parts, 0, timestampIndex));
         }
         return author;
     }
@@ -110,20 +110,19 @@ public final class Commit implements GitObject {
             return "";
         }
         String[] parts = author.split("\\s+");
-        for (int i = 0; i < parts.length; i++) {
-            if (parts[i].matches("\\d{9,}") && i + 1 < parts.length) {
-                try {
-                    long ts = Long.parseLong(parts[i]);
-                    String tz = parts[i + 1];
-                    ZoneOffset offset = ZoneOffset.of(tz);
-                    return Instant.ofEpochSecond(ts).atOffset(offset)
-                            .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss yyyy XX", Locale.US));
-                } catch (Exception ignored) {
-                    return "";
-                }
-            }
+        int timestampIndex = findTimestampIndex(parts);
+        if (timestampIndex < 0 || timestampIndex + 1 >= parts.length) {
+            return "";
         }
-        return "";
+        try {
+            long ts = Long.parseLong(parts[timestampIndex]);
+            String tz = parts[timestampIndex + 1];
+            ZoneOffset offset = ZoneOffset.of(tz);
+            return Instant.ofEpochSecond(ts).atOffset(offset)
+                    .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss yyyy XX", Locale.US));
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     /**
@@ -135,16 +134,37 @@ public final class Commit implements GitObject {
             return 0L;
         }
         String[] parts = author.split("\\s+");
-        for (String p : parts) {
-            if (p.matches("\\d{9,}")) {
-                try {
-                    return Long.parseLong(p);
-                } catch (NumberFormatException ignored) {
-                    // continue
-                }
+        int timestampIndex = findTimestampIndex(parts);
+        if (timestampIndex < 0) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(parts[timestampIndex]);
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
+    }
+
+    /**
+     * 从 author 字符串解析时间戳，并格式化为短日期（yyyy-MM-dd）。
+     */
+    public static String formatAuthorShortDate(String author) {
+        long timestamp = getAuthorTimestamp(author);
+        if (timestamp <= 0) {
+            return "";
+        }
+        return Instant.ofEpochSecond(timestamp)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ISO_LOCAL_DATE);
+    }
+
+    private static int findTimestampIndex(String[] parts) {
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].matches("\\d{9,}")) {
+                return i;
             }
         }
-        return 0L;
+        return -1;
     }
 
     /**
