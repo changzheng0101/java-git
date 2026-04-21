@@ -69,7 +69,12 @@ public class LogCommand extends BaseCommand {
             if (revisions == null || revisions.isEmpty()) {
                 String head = Repository.INSTANCE.getRefs().readHead();
                 if (Strings.isNullOrEmpty(head)) {
-                    System.err.println("fatal: Not a valid object name: 'HEAD'.");
+                    String currentBranch = Repository.INSTANCE.getRefs().getCurrentBranchName();
+                    if (currentBranch != null) {
+                        System.err.println("fatal: your current branch '" + currentBranch + "' does not have any commits yet");
+                    } else {
+                        System.err.println("fatal: Not a valid object name: 'HEAD'.");
+                    }
                     exitCode = 1;
                     return;
                 }
