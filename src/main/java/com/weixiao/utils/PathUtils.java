@@ -17,7 +17,7 @@ import java.util.List;
 public class PathUtils {
 
     /**
-     * 归一化相对路径：反斜杠转正斜杠、去首尾空格、去掉开头的 '/'。
+     * 归一化相对路径：反斜杠转正斜杠、去首尾空格、去掉开头的 '/'、去掉尾部 '/'。
      * 用于统一 diff/checkout 等产生的路径格式。
      *
      * @param path 原始路径，可为 null
@@ -25,7 +25,13 @@ public class PathUtils {
      */
     public static String normalizePath(String path) {
         String p = Strings.nullToEmpty(path).replace('\\', '/').trim();
-        return p.startsWith("/") ? p.substring(1) : p;
+        if (p.startsWith("/")) {
+            p = p.substring(1);
+        }
+        while (p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
     }
 
     public static int pathDepth(String path) {
@@ -115,4 +121,3 @@ public class PathUtils {
         return true;
     }
 }
-

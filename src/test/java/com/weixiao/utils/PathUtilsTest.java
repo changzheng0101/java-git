@@ -15,6 +15,14 @@ class PathUtilsTest {
     }
 
     @Test
+    @DisplayName("normalizePath 统一分隔符并移除首尾多余斜杠")
+    void normalizePath_normalizesSeparatorsAndBoundarySlashes() {
+        assertThat(PathUtils.normalizePath(" /foo\\bar/ ")).isEqualTo("foo/bar");
+        assertThat(PathUtils.normalizePath("docs/")).isEqualTo("docs");
+        assertThat(PathUtils.normalizePath((String) null)).isEmpty();
+    }
+
+    @Test
     @DisplayName("getAllParentDir(null) 返回空列表")
     void getAllParentDir_null_returnsEmpty() {
         List<String> result = PathUtils.getAllParentDir(null);

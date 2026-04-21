@@ -4,6 +4,7 @@ import com.weixiao.obj.TreeEntry;
 import com.weixiao.utils.BinaryIOUtils;
 import com.weixiao.utils.CryptoUtils;
 import com.weixiao.utils.HexUtils;
+import com.weixiao.utils.PathUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
@@ -57,8 +58,13 @@ public final class Index {
      * 对目录路径：存在该目录下任意已跟踪路径（path/xxx）即为 true。
      */
     public boolean tracked(String path) {
+        String normalized = PathUtils.normalizePath(path);
+        if (normalized.isEmpty()) {
+            return !entries.isEmpty();
+        }
         return entries.stream()
-                .anyMatch(entry -> entry.getPath().startsWith(path));
+                .anyMatch(entry -> entry.getPath().equals(normalized)
+                        || entry.getPath().startsWith(normalized + "/"));
     }
 
 
@@ -301,7 +307,7 @@ public final class Index {
      * 从暂存区移除指定路径的条目（用于如 rm --cached 的场景）。
      */
     public void remove(String path) {
-        String normalized = path.replace('\\', '/');
+        String normalized = PathUtils.normalizePath(path);
         entries.removeIf(e -> e.getPath().equals(normalized));
         log.debug("remove entry path={}", normalized);
     }
@@ -324,7 +330,7 @@ public final class Index {
      * 按路径和 stage 查找一条暂存条目，不存在返回 null。
      */
     public Entry getEntryForPath(String path, int stage) {
-        String normalized = path.replace('\\', '/');
+        String normalized = PathUtils.normalizePath(path);
         for (Entry e : entries) {
             if (e.getPath().equals(normalized) && e.getStage() == stage) return e;
         }

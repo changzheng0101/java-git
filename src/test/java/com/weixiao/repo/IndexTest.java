@@ -105,6 +105,19 @@ class IndexTest {
     }
 
     @Test
+    @DisplayName("tracked 不能把普通字符串前缀误判为已跟踪路径")
+    void tracked_falseWhenPathIsOnlyStringPrefix(@TempDir Path gitDir) {
+        Index index = new Index(gitDir);
+        index.add(new Index.Entry("foobar.txt", "100644", oid('a'), 0, 1, ZERO_STAT));
+        index.add(new Index.Entry("docs/readme.md", "100644", oid('b'), 0, 1, ZERO_STAT));
+
+        assertThat(index.tracked("foo")).isFalse();
+        assertThat(index.tracked("doc")).isFalse();
+        assertThat(index.tracked("foobar.txt")).isTrue();
+        assertThat(index.tracked("docs")).isTrue();
+    }
+
+    @Test
     @DisplayName("add stage-0 条目时会清理同路径的 stage 1/2/3")
     void add_stage0_clearsConflictStages(@TempDir Path gitDir) {
         Index index = new Index(gitDir);
