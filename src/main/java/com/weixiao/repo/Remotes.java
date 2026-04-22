@@ -54,20 +54,19 @@ public final class Remotes {
     }
 
 
-    /**
-     * 列出 remote；{@code verbose} 为真时每项输出两行 {@code (fetch)} / {@code (push)}，与 {@code git remote -v} 一致。
-     */
-    public void printListing(boolean verbose) {
+    public List<String> listingLines(boolean verbose) {
+        List<String> lines = new ArrayList<>();
         for (String name : listRemoteNames()) {
             if (!verbose) {
-                System.out.println(name);
-                continue;
+                lines.add(name);
+            } else {
+                String fetchPart = getUrl(name).orElse("");
+                String pushPart = getPushUrl(name).orElse("");
+                lines.add(name + "\t" + fetchPart + " (fetch)");
+                lines.add(name + "\t" + pushPart + " (push)");
             }
-            String fetchPart = getUrl(name).orElse("");
-            String pushPart = getPushUrl(name).orElse("");
-            System.out.println(name + "\t" + fetchPart + " (fetch)");
-            System.out.println(name + "\t" + pushPart + " (push)");
         }
+        return lines;
     }
 
     /**

@@ -35,6 +35,7 @@ public abstract class BaseCommand implements Runnable, CommandLine.IExitCodeGene
         if (requiresRepository()) {
             repo = Repository.find(jit.getStartPath());
             if (repo == null) {
+                System.err.println(Repository.FATAL_NOT_A_REPO);
                 exitCode = 1;
                 return;
             }

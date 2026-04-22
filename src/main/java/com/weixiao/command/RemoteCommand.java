@@ -25,7 +25,9 @@ public class RemoteCommand extends BaseCommand {
     protected void doRun() {
         List<String> a = args == null || args.isEmpty() ? List.of() : args;
         if (a.isEmpty()) {
-            repo.getRemotes().printListing(verbose);
+            for (String line : repo.getRemotes().listingLines(verbose)) {
+                System.out.println(line);
+            }
             return;
         }
 
