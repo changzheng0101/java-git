@@ -5,7 +5,6 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -21,14 +20,6 @@ public class RemoteCommand extends BaseCommand {
     @SuppressWarnings("unused")
     @Parameters(arity = "0..*", paramLabel = "ARGS", description = "例如 remove <name>")
     private List<String> args;
-
-    @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (verbose) {
-            params.put("verbose", "");
-        }
-    }
 
     @Override
     protected void doRun() {

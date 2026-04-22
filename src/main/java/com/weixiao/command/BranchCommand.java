@@ -9,9 +9,7 @@ import picocli.CommandLine.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,8 +23,6 @@ import java.util.Map;
 public class BranchCommand extends BaseCommand {
 
     private static final Logger log = LoggerFactory.getLogger(BranchCommand.class);
-
-    private static final String BRANCH_NAMES_SEP = "\n";
 
     @SuppressWarnings("unused")
     @Option(names = {"-v", "--verbose"}, description = "显示每个分支指向的提交和标题行")
@@ -45,31 +41,13 @@ public class BranchCommand extends BaseCommand {
     private List<String> branchNames;
 
     @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (verbose) {
-            params.put("verbose", "");
-        }
-        if (delete) {
-            params.put("delete", "");
-        }
-        if (force) {
-            params.put("force", "");
-        }
-        if (branchNames != null && !branchNames.isEmpty()) {
-            params.put("branchNames", String.join(BRANCH_NAMES_SEP, branchNames));
-        }
-    }
-
-    @Override
     protected void doRun() {
-        log.debug("branch start path={} names={}", getStartPath(), get("branchNames"));
+        log.debug("branch start path={} names={}", getStartPath(), branchNames);
         try {
-            boolean deleteMode = isSet("delete") || isSet("force");
-            String branchNamesStr = get("branchNames");
-            List<String> names = branchNamesStr == null || branchNamesStr.isEmpty()
+            boolean deleteMode = delete || force;
+            List<String> names = branchNames == null || branchNames.isEmpty()
                     ? Collections.emptyList()
-                    : Arrays.asList(branchNamesStr.split(BRANCH_NAMES_SEP));
+                    : branchNames;
 
             if (deleteMode) {
                 if (names.isEmpty()) {
@@ -77,7 +55,7 @@ public class BranchCommand extends BaseCommand {
                     exitCode = 1;
                     return;
                 }
-                deleteBranches(repo, names, isSet("force"));
+                deleteBranches(repo, names, force);
                 return;
             }
 
@@ -156,7 +134,7 @@ public class BranchCommand extends BaseCommand {
             boolean current = name.equals(currentBranch);
             String prefix = current ? "*" : " ";
 
-            if (!isSet("verbose")) {
+            if (!verbose) {
                 System.out.println(prefix + " " + name);
             } else {
                 String oid = namesToOid.get(name);

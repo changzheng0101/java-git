@@ -8,7 +8,6 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,14 +50,6 @@ public class StatusCommand extends BaseCommand {
     private boolean porcelain;
 
     @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (porcelain) {
-            params.put("porcelain", "");
-        }
-    }
-
-    @Override
     protected void doRun() {
         log.debug("status start path={}", getStartPath());
         try {
@@ -72,7 +63,7 @@ public class StatusCommand extends BaseCommand {
             Set<String> indexModified = result.getIndexModified();
             java.util.Map<String, Set<Integer>> conflicts = result.getConflicts();
 
-            if (isSet("porcelain")) {
+            if (porcelain) {
                 // 机器可读格式与 Git 一致：第一列为 index vs HEAD，第二列为 workspace vs index，无则用空格；untracked 为 "??"
                 Set<String> allPaths = new HashSet<>();
                 allPaths.addAll(conflicts.keySet());

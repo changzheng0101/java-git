@@ -19,7 +19,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,31 +57,11 @@ public class DiffCommand extends BaseCommand {
     @Option(names = {"--theirs", "-3"}, description = "冲突文件以 stage-3（theirs）为基准显示 diff")
     private boolean theirs;
 
-    @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (cached) {
-            params.put("cached", "");
-        }
-        if (noColor) {
-            params.put("noColor", "");
-        }
-        if (base) {
-            params.put("stage", "1");
-        }
-        if (ours) {
-            params.put("stage", "2");
-        }
-        if (theirs) {
-            params.put("stage", "3");
-        }
-    }
-
     /**
      * 是否使用颜色（与 Git 一致：默认在 TTY 下开启，--no-color 关闭）
      */
     private boolean useColor() {
-        if (isSet("noColor")) {
+        if (noColor) {
             return false;
         }
         return System.console() != null;
@@ -93,7 +72,7 @@ public class DiffCommand extends BaseCommand {
         try {
             repo.getIndex().load();
             StatusResult status = repo.getStatus();
-            if (isSet("cached")) {
+            if (cached) {
                 diffHeadIndex(status);
             } else {
                 diffIndexWorkspace(status);
@@ -139,7 +118,7 @@ public class DiffCommand extends BaseCommand {
     private void printConflictDiff(String path) throws IOException {
         System.out.println("* Unmerged path " + path);
 
-        Index.Entry indexEntry = Repository.INSTANCE.getIndex().getEntryForPath(path, getStageFromParams());
+        Index.Entry indexEntry = repo.getIndex().getEntryForPath(path, getSelectedStage());
         if (indexEntry == null) {
             return;
         }
@@ -399,11 +378,16 @@ public class DiffCommand extends BaseCommand {
     }
 
 
-    private int getStageFromParams() {
-        String stage = params.get("stage");
-        if (stage == null) {
-            return -1;
+    private int getSelectedStage() {
+        if (theirs) {
+            return 3;
         }
-        return Integer.parseInt(stage);
+        if (ours) {
+            return 2;
+        }
+        if (base) {
+            return 1;
+        }
+        return -1;
     }
 }

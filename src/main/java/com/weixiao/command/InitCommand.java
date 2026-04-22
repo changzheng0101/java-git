@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -36,11 +35,6 @@ public class InitCommand extends BaseCommand {
     @Override
     protected boolean requiresRepository() {
         return false;
-    }
-
-    @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
     }
 
     /** 在 Jit 工作目录下创建 .git、.git/objects、.git/refs/heads 并写入 HEAD 指向 refs/heads/master，成功时输出一行提示。 */

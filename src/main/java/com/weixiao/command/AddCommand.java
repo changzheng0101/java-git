@@ -11,12 +11,7 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * jit add - 将工作区中的文件或目录加入暂存区，支持一次添加多个路径。
@@ -28,24 +23,11 @@ public class AddCommand extends BaseCommand {
     private static final Logger log = LoggerFactory.getLogger(AddCommand.class);
 
     /**
-     * 多值参数分隔符（路径中一般不包含）。
-     */
-    private static final String PATHS_SEP = "\n";
-
-    /**
      * 要添加的路径（文件或目录），可多个。
      */
     @SuppressWarnings({"unused", "MismatchedQueryAndUpdateOfCollection"})
     @Parameters(index = "0", arity = "1..*", paramLabel = "PATH", description = "要添加的文件或目录路径（可多个）")
     private List<Path> paths;
-
-    @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (paths != null && !paths.isEmpty()) {
-            params.put("paths", paths.stream().map(Path::toString).collect(Collectors.joining(PATHS_SEP)));
-        }
-    }
 
     @Override
     protected void doRun() {
@@ -56,10 +38,7 @@ public class AddCommand extends BaseCommand {
         try {
             repo.getIndex().load();
 
-            String pathsStr = get("paths");
-            List<Path> pathList = pathsStr == null || pathsStr.isEmpty()
-                    ? Collections.emptyList()
-                    : Arrays.stream(pathsStr.split(PATHS_SEP)).map(Paths::get).toList();
+            List<Path> pathList = paths == null ? List.of() : paths;
             Path start = getStartPath();
             for (Path p : pathList) {
                 Path resolved = start.resolve(p).normalize();

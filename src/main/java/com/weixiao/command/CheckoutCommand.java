@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine.*;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
 
 /**
  * jit checkout - 将工作区和暂存区切换到指定 commit（或分支指向的 commit）。
@@ -26,16 +25,8 @@ public class CheckoutCommand extends BaseCommand {
     private String ref;
 
     @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (ref != null) {
-            params.put("ref", ref);
-        }
-    }
-
-    @Override
     protected void doRun() {
-        String refVal = get("ref");
+        String refVal = ref;
         log.debug("checkout start path={} ref={}", getStartPath(), refVal);
         try {
             String headOid = repo.getRefs().readHead();

@@ -13,7 +13,6 @@ import picocli.CommandLine.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,32 +48,13 @@ public class LogCommand extends BaseCommand {
     private List<String> revisions;
 
     @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (abbrevCommit) {
-            params.put("abbrevCommit", "");
-        }
-        if (noAbbrevCommit) {
-            params.put("noAbbrevCommit", "");
-        }
-        if (oneline) {
-            params.put("oneline", "");
-        }
-    }
-
-    @Override
     protected void doRun() {
-        log.debug("log start path={} revisions={}", getStartPath(), get("revisions"));
+        log.debug("log start path={} revisions={}", getStartPath(), revisions);
         try {
             if (revisions == null || revisions.isEmpty()) {
                 String head = Repository.INSTANCE.getRefs().readHead();
                 if (Strings.isNullOrEmpty(head)) {
-                    String currentBranch = Repository.INSTANCE.getRefs().getCurrentBranchName();
-                    if (currentBranch != null) {
-                        System.err.println("fatal: your current branch '" + currentBranch + "' does not have any commits yet");
-                    } else {
-                        System.err.println("fatal: Not a valid object name: 'HEAD'.");
-                    }
+                    System.err.println("fatal: Not a valid object name: 'HEAD'.");
                     exitCode = 1;
                     return;
                 }
@@ -82,7 +62,7 @@ public class LogCommand extends BaseCommand {
 
             RevList.RevSpecResult spec = RevList.parseRevSpecs(revisions);
 
-            boolean useAbbrev = isSet("oneline") || (isSet("abbrevCommit") && !isSet("noAbbrevCommit"));
+            boolean useAbbrev = oneline || (abbrevCommit && !noAbbrevCommit);
             RevList.walk(spec, entry -> {
                 String refsStr = formatRefsAtCommit(entry.oid());
                 printCommit(entry.oid(), entry.commit(), useAbbrev, refsStr);
@@ -129,7 +109,7 @@ public class LogCommand extends BaseCommand {
 
     private void printCommit(String oid, Commit commit, boolean abbrev, String refsStr) {
         String id = abbrev ? ObjectDatabase.shortOid(oid) : oid;
-        if (isSet("oneline")) {
+        if (oneline) {
             String title = Commit.firstLine(commit.getMessage());
             System.out.println(Color.yellow(id) + refsStr + " " + title);
         } else {
@@ -146,4 +126,3 @@ public class LogCommand extends BaseCommand {
     }
 
 }
-

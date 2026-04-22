@@ -11,7 +11,6 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -27,14 +26,6 @@ public class CommitCommand extends BaseCommand {
     @SuppressWarnings("unused")
     @Option(names = {"-m", "--message"}, description = "提交信息")
     private String message;
-
-    @Override
-    protected void initParams() {
-        params = new LinkedHashMap<>();
-        if (message != null) {
-            params.put("message", message);
-        }
-    }
 
     /**
      * 从 Jit 工作目录查找仓库，从 index 构建 tree 并提交，更新当前分支（HEAD 指向的 ref）；index 为空时失败。
@@ -59,7 +50,7 @@ public class CommitCommand extends BaseCommand {
                 exitCode = 1;
                 return;
             }
-            String msg = get("message");
+            String msg = message;
             if (msg == null || msg.isBlank()) {
                 System.err.println("fatal: commit message is required (use -m)");
                 exitCode = 1;
