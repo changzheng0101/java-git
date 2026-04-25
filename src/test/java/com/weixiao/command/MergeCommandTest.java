@@ -25,18 +25,6 @@ class MergeCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
-    private static void initRepoWithTwoCommits(Path tempDir) throws Exception {
-        JIT.execute("-C", tempDir.toString(), "init");
-        Path f = tempDir.resolve("f.txt");
-        Files.writeString(f, "v1");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
-
-        Files.writeString(f, "v2");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
-    }
-
     /**
      * 初始化分支结构：
      * <p>
@@ -57,7 +45,7 @@ class MergeCommandTest {
      * - dev:    first -> second -> third
      */
     private static void initRepoWithBranchAndExtraCommit(Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
         Path f = tempDir.resolve("f.txt");
@@ -147,7 +135,7 @@ class MergeCommandTest {
     @Test
     @DisplayName("merge 当前提交时提示 Already up to date 且 HEAD 不变")
     void merge_sameBranch_alreadyUpToDate(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         Repository.find(tempDir);
         String headOid = Repository.INSTANCE.getRefs().readHead();
 
@@ -363,7 +351,7 @@ class MergeCommandTest {
     @Test
     @DisplayName("merge 非法 revision 失败并输出 fatal")
     void merge_invalidRevision_fails(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "merge", "nonexistent-branch");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("fatal:");

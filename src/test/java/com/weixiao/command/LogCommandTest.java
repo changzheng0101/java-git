@@ -20,32 +20,6 @@ class LogCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
 
-    /**
-     * 初始化一个简单线性历史，便于 log 测试。
-     * <p>
-     * 文本示意图：
-     * <p>
-     *   master:  A --- B
-     *             ^     ^
-     *             |     |
-     *          "first" "second"
-     * <p>
-     * - A：写入 f.txt="v1"，add 后 commit -m "first"；
-     * - B：修改 f.txt="v2"，add 后 commit -m "second"；
-     * - HEAD -> master -> B。
-     */
-    private static void initRepoWithTwoCommits(Path tempDir) throws Exception {
-        JIT.execute("-C", tempDir.toString(), "init");
-        Path f = tempDir.resolve("f.txt");
-        Files.writeString(f, "v1");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "first");
-
-        Files.writeString(f, "v2");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", "second");
-    }
-
     @Test
     @DisplayName("在非仓库目录执行 log 失败并提示 not a jit repository")
     void log_outsideRepo_fails(@TempDir Path dir) {
@@ -66,7 +40,7 @@ class LogCommandTest {
     @Test
     @DisplayName("默认 log 按从新到旧顺序输出完整 commit id 和消息")
     void log_defaultPrintsFullIdsAndMessages(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         Repository repo = Repository.find(tempDir);
         String head = repo.getRefs().readHead();
 
@@ -84,7 +58,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log --oneline 使用缩写 commit id 和标题行")
     void log_oneline_usesAbbrevAndTitle(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         Repository repo = Repository.find(tempDir);
         String head = repo.getRefs().readHead();
         String abbrev = head.substring(0, 7);
@@ -98,7 +72,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log --abbrev-commit 缩写 commit id，--no-abbrev-commit 覆盖缩写行为")
     void log_abbrev_and_noAbbrev(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         Repository repo = Repository.find(tempDir);
         String head = repo.getRefs().readHead();
         String abbrev = head.substring(0, 7);
@@ -115,7 +89,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log 首行 commit 后显示 (HEAD -> master)")
     void log_showsHeadAndBranch(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log");
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput()).contains("(HEAD -> master)");
@@ -124,7 +98,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log --oneline 行末也显示 (HEAD -> master)")
     void log_oneline_showsHeadAndBranch(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput()).contains("(HEAD -> master)");
@@ -133,7 +107,7 @@ class LogCommandTest {
     @Test
     @DisplayName("多分支指向同一 commit 时 log 显示 HEAD -> 当前分支及另一分支")
     void log_multipleBranchesAtSameCommit(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -145,7 +119,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log master 显示 master 可达的提交")
     void log_withRevision_master(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "master", "--oneline");
         assertThat(result.getExitCode()).isEqualTo(0);
         assertThat(result.getOutput()).contains("second").contains("first");
@@ -171,7 +145,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log 单 revision 显示该起点可达的提交")
     void log_singleRevision_showsReachable(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
         Path f = tempDir.resolve("f.txt");
@@ -205,7 +179,7 @@ class LogCommandTest {
     @Test
     @DisplayName("log A..B 只显示在 B 可达且 A 不可达的提交")
     void log_dotDot_onlyCommitsInBNotInA(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "dev");
         JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "dev");
         Path f = tempDir.resolve("f.txt");
@@ -223,10 +197,9 @@ class LogCommandTest {
     @Test
     @DisplayName("log 非法 revision 失败并输出 fatal")
     void log_invalidRevision_fails(@TempDir Path tempDir) throws Exception {
-        initRepoWithTwoCommits(tempDir);
+        JitTestUtil.initRepoWithTwoCommits(JIT, tempDir);
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "log", "nonexistent-branch");
         assertThat(result.getExitCode()).isNotEqualTo(0);
         assertThat(result.getErr()).contains("fatal:");
     }
 }
-

@@ -7,6 +7,7 @@ import com.weixiao.obj.Commit;
 import com.weixiao.obj.GitObject;
 import com.weixiao.repo.Refs;
 import com.weixiao.repo.Repository;
+import com.weixiao.repo.SysRef;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,28 +23,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CheckoutCommandTest {
 
     private static final CommandLine JIT = Jit.createCommandLine();
-
-    /**
-     * 在给定目录创建仓库并做一次 commit，便于 checkout/branch 测试。
-     * <p>
-     * 文本示意图：
-     * <p>
-     *   master: A  (A 的提交消息由参数 message 决定)
-     * <p>
-     * - init 后写入 f.txt="v1"，add 并 commit -m message；
-     * - HEAD -> master，master -> A，返回 A 的 oid。
-     */
-    private static String initRepoWithOneCommit(Path tempDir, String message) throws Exception {
-        JIT.execute("-C", tempDir.toString(), "init");
-        Path f = tempDir.resolve("f.txt");
-        Files.writeString(f, "v1");
-        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "add", "f.txt");
-        ExecuteResult commit = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "commit", "-m", message);
-        assertThat(commit.getExitCode()).as("commit out: %s err: %s", commit.getOutput(), commit.getErr()).isEqualTo(0);
-        Repository repo = Repository.find(tempDir);
-        assertThat(repo).isNotNull();
-        return repo.getRefs().readHead();
-    }
 
     private static String readHeadFileRaw(Path tempDir) throws Exception {
         Path head = tempDir.resolve(".git").resolve("HEAD");
@@ -129,7 +108,7 @@ class CheckoutCommandTest {
     @Test
     @DisplayName("checkout 到 commit（detached HEAD）输出与 git 一致，且 HEAD 文件写为 commit id")
     void checkout_toCommit_detachedHead_printsHeadIsNowAt(@TempDir Path tempDir) throws Exception {
-        String headOid = initRepoWithOneCommit(tempDir, "only commit");
+        String headOid = JitTestUtil.initRepoWithOneCommit(JIT, tempDir, "only commit");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", headOid);
         assertThat(result.getExitCode()).as("checkout out: %s err: %s", result.getOutput(), result.getErr()).isEqualTo(0);
@@ -143,7 +122,7 @@ class CheckoutCommandTest {
     @Test
     @DisplayName("checkout 到当前分支输出 Already on '<branch>'（与 git 一致）")
     void checkout_toSameBranch_printsAlreadyOn(@TempDir Path tempDir) throws Exception {
-        initRepoWithOneCommit(tempDir, "first");
+        JitTestUtil.initRepoWithOneCommit(JIT, tempDir, "first");
 
         ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "master");
         assertThat(result.getExitCode()).isEqualTo(0);
@@ -155,7 +134,7 @@ class CheckoutCommandTest {
     @Test
     @DisplayName("从 detached HEAD checkout 回分支：输出 switched，并将 HEAD 从 oid 改回 symref")
     void checkout_fromDetachedToBranch_restoresSymref(@TempDir Path tempDir) throws Exception {
-        String headOid = initRepoWithOneCommit(tempDir, "first");
+        String headOid = JitTestUtil.initRepoWithOneCommit(JIT, tempDir, "first");
 
         ExecuteResult detached = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", headOid);
         assertThat(detached.getExitCode()).isEqualTo(0);
@@ -165,5 +144,54 @@ class CheckoutCommandTest {
         assertThat(back.getExitCode()).isEqualTo(0);
         assertThat(back.getOutput()).contains("Switched to branch 'master'");
         assertThat(readHeadFileRaw(tempDir)).contains("ref: " + Refs.REFS_HEADS + "master");
+    }
+
+    @Test
+    @DisplayName("checkout -b 从当前 HEAD 创建并切换到新分支")
+    void checkout_createBranchFromHead_switchesToNewBranch(@TempDir Path tempDir) throws Exception {
+        String headOid = JitTestUtil.initRepoWithOneCommit(JIT, tempDir, "first");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "-b", "feature/demo");
+        assertThat(result.getExitCode()).as("checkout -b err: %s", result.getErr()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Switched to a new branch 'feature/demo'");
+
+        Repository repo = Repository.find(tempDir);
+        assertThat(repo.getRefs().getCurrentBranchName()).isEqualTo("feature/demo");
+        assertThat(readHeadFileRaw(tempDir)).contains("ref: " + Refs.REFS_HEADS + "feature/demo");
+        assertThat(repo.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "feature/demo"))).isEqualTo(headOid);
+    }
+
+    @Test
+    @DisplayName("checkout -b 到已存在分支时失败且不切换 HEAD")
+    void checkout_createExistingBranch_fails(@TempDir Path tempDir) throws Exception {
+        JitTestUtil.initRepoWithOneCommit(JIT, tempDir, "first");
+        JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "branch", "feature");
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(JIT, "-C", tempDir.toString(), "checkout", "-b", "feature");
+        assertThat(result.getExitCode()).isNotEqualTo(0);
+        assertThat(result.getErr()).contains("already exists");
+
+        Repository repo = Repository.find(tempDir);
+        assertThat(repo.getRefs().getCurrentBranchName()).isEqualTo("master");
+        assertThat(readHeadFileRaw(tempDir)).contains("ref: " + Refs.REFS_HEADS + "master");
+    }
+
+    @Test
+    @DisplayName("checkout -b <name> <start-point> 从指定提交创建并切换分支")
+    void checkout_createBranchFromStartPoint_switchesToTarget(@TempDir Path tempDir) throws Exception {
+        String headAfterSecond = JitTestUtil.initRepoWithTwoCommits(JIT, tempDir, "a.txt", "v1", "first", "v2", "second");
+        Repository repo = Repository.find(tempDir);
+        String firstCommitOid = ((Commit) repo.getDatabase().load(headAfterSecond)).getParentOid();
+
+        ExecuteResult result = JitTestUtil.executeWithCapturedOut(
+                JIT, "-C", tempDir.toString(), "checkout", "-b", "release/first", firstCommitOid
+        );
+        assertThat(result.getExitCode()).as("checkout -b err: %s", result.getErr()).isEqualTo(0);
+        assertThat(result.getOutput()).contains("Switched to a new branch 'release/first'");
+
+        Repository repoAfter = Repository.find(tempDir);
+        assertThat(repoAfter.getRefs().getCurrentBranchName()).isEqualTo("release/first");
+        assertThat(repoAfter.getRefs().readRef(new SysRef(Refs.REFS_HEADS + "release/first"))).isEqualTo(firstCommitOid);
+        assertThat(Files.readString(tempDir.resolve("a.txt"))).isEqualTo("v1");
     }
 }
